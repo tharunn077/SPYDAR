@@ -13,9 +13,9 @@ SPYDAR is a high-fidelity, cross-platform mobile application that functions as a
 
 *(Replace the placeholder links below with the actual paths to your images once you upload them to the repository)*
 
-| Assembly Dashboard | Bottleneck Diagnostics | SPYDAR OS Vault | Campaign Mode |
+| Assembly Dashboard | Bottleneck Diagnostics | SPYDAR OS | Campaign Mode |
 | :---: | :---: | :---: | :---: |
-| <img src="link_to_assembly_image.png" width="200"/> | <img src="link_to_diagnostic_image.png" width="200"/> | <img src="link_to_vault_image.png" width="200"/> | <img src="link_to_campaign_image.png" width="200"/> |
+| <img src="[simulator.png](https://github.com/tharunn077/SPYDAR/blob/main/android/Simulator.png)" width="200"/> | <img src="link_to_diagnostic_image.png" width="200"/> | <img src="https://github.com/tharunn077/SPYDAR/blob/main/android/os_screen.png" width="200"/> | <img src="link_to_campaign_image.png" width="200"/> |
 
 ---
 
