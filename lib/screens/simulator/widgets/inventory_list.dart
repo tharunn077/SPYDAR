@@ -42,7 +42,9 @@ class InventoryList extends StatefulWidget {
 }
 
 class _InventoryListState extends State<InventoryList> {
-  late AudioPlayer _audioPlayer;
+    final ScrollController _listController = ScrollController();
+    late AudioPlayer _audioPlayer;
+
 
   @override
   void initState() {
@@ -60,6 +62,7 @@ class _InventoryListState extends State<InventoryList> {
   @override
   void dispose() {
     _audioPlayer.dispose(); 
+    _listController.dispose();
     super.dispose();
   }
 
@@ -74,15 +77,19 @@ class _InventoryListState extends State<InventoryList> {
   
   // ... rest of your build code ...
 
-  @override
+ @override
   Widget build(BuildContext context) {
+    // ✅ 3. Wrap with RawScrollbar and link the controller
     return RawScrollbar(
+      controller: _listController, // 🔒 Linked
       thumbColor: widget.themeColor.withOpacity(0.5),
       radius: const Radius.circular(20),
       thickness: 4,
       thumbVisibility: true,
-      interactive: true, 
+      interactive: true,
       child: ListView.builder(
+        controller: _listController, // 🔒 Linked (Critical to prevent crashes)
+        primary: false, // ✅ Keeps animations safe
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         padding: const EdgeInsets.only(right: 12, bottom: 20),
         itemCount: widget.items.length,
@@ -139,41 +146,21 @@ class _InventoryListState extends State<InventoryList> {
 
           // --- 2. LOGIC ENGINE CHECK ---
           bool isCompatible = true;
-
           if (widget.slotType == "CPU") {
-            isCompatible = HeuristicEngine.checkCompatibility(
-                cpu: item, 
-                mobo: widget.currentMobo, 
-                cooler: widget.currentCooler 
-            );
-          } 
-          else if (widget.slotType == "MOTHER\nBOARD") {
-            isCompatible = HeuristicEngine.checkCompatibility(
-                cpu: widget.currentCpu, 
-                mobo: item, 
-                ram: widget.currentRam, 
-                storage: widget.currentStorage,
-                cooler: widget.currentCooler 
-            );
-          } 
-          else if (widget.slotType == "RAM") {
+            isCompatible = HeuristicEngine.checkCompatibility(cpu: item, mobo: widget.currentMobo, cooler: widget.currentCooler);
+          } else if (widget.slotType == "MOTHER\nBOARD") {
+            isCompatible = HeuristicEngine.checkCompatibility(cpu: widget.currentCpu, mobo: item, ram: widget.currentRam, storage: widget.currentStorage, cooler: widget.currentCooler);
+          } else if (widget.slotType == "RAM") {
             isCompatible = HeuristicEngine.checkCompatibility(ram: item, mobo: widget.currentMobo);
-          } 
-          else if (widget.slotType == "STORAGE") {
+          } else if (widget.slotType == "STORAGE") {
             isCompatible = HeuristicEngine.checkCompatibility(storage: item, mobo: widget.currentMobo);
-          } 
-          else if (widget.slotType == "COOLER") {
-            isCompatible = HeuristicEngine.checkCompatibility(
-              cooler: item, 
-              mobo: widget.currentMobo, 
-              cpu: widget.currentCpu
-            );
+          } else if (widget.slotType == "COOLER") {
+            isCompatible = HeuristicEngine.checkCompatibility(cooler: item, mobo: widget.currentMobo, cpu: widget.currentCpu);
           }
 
           // --- 3. BUILD UI ---
           return Stack(
             children: [
-              // 1. THE COMPONENT CARD
               Opacity(
                 opacity: isCompatible ? 1.0 : 0.4,
                 child: AnimatedContainer(
@@ -186,9 +173,7 @@ class _InventoryListState extends State<InventoryList> {
                         : (isCompatible ? Colors.white.withOpacity(0.05) : Colors.red.withOpacity(0.05)),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: isEquipped
-                            ? widget.themeColor
-                            : (isCompatible ? Colors.white12 : Colors.red.withOpacity(0.3)),
+                        color: isEquipped ? widget.themeColor : (isCompatible ? Colors.white12 : Colors.red.withOpacity(0.3)),
                         width: isEquipped ? 2 : 1),
                   ),
                   child: ListTile(
@@ -198,45 +183,21 @@ class _InventoryListState extends State<InventoryList> {
                         color: isEquipped ? widget.themeColor : (isCompatible ? Colors.white70 : Colors.red)),
                     title: Text(name, style: GoogleFonts.orbitron(color: Colors.white, fontSize: 11)),
                     subtitle: isEquipped
-                        ? Text("INSTALLED",
-                            style: TextStyle(color: widget.themeColor, fontSize: 9, fontWeight: FontWeight.bold))
-                        : Text(isCompatible ? specs : "⚠️ Incompatible",
-                            style: TextStyle(color: isCompatible ? Colors.white54 : Colors.redAccent, fontSize: 9)),
-                    
-                    // ✅ UPDATED ONTAP WITH LOW LATENCY SOUND
+                        ? Text("INSTALLED", style: TextStyle(color: widget.themeColor, fontSize: 9, fontWeight: FontWeight.bold))
+                        : Text(isCompatible ? specs : "⚠️ Incompatible", style: TextStyle(color: isCompatible ? Colors.white54 : Colors.redAccent, fontSize: 9)),
                     onTap: () {
                       HapticFeedback.selectionClick();
-
-                      // --- ERROR DIALOG HANDLING ---
                       if (!isCompatible) {
                         String error = "";
-                        
-                        if (widget.slotType == "CPU") {
-                          error = HeuristicEngine.getErrorMessage(cpu: item, mobo: widget.currentMobo, cooler: widget.currentCooler);
-                        } else if (widget.slotType == "MOTHER\nBOARD") {
-                          error = HeuristicEngine.getErrorMessage(
-                              cpu: widget.currentCpu, mobo: item, ram: widget.currentRam, storage: widget.currentStorage, cooler: widget.currentCooler);
-                        } else if (widget.slotType == "RAM") {
-                          error = HeuristicEngine.getErrorMessage(ram: item, mobo: widget.currentMobo);
-                        } else if (widget.slotType == "STORAGE") {
-                          error = HeuristicEngine.getErrorMessage(storage: item, mobo: widget.currentMobo);
-                        } else if (widget.slotType == "COOLER") {
-                          error = HeuristicEngine.getErrorMessage(
-                            cooler: item, 
-                            mobo: widget.currentMobo, 
-                            cpu: widget.currentCpu
-                          );
-                        }
-                        
+                        if (widget.slotType == "CPU") error = HeuristicEngine.getErrorMessage(cpu: item, mobo: widget.currentMobo, cooler: widget.currentCooler);
+                        else if (widget.slotType == "MOTHER\nBOARD") error = HeuristicEngine.getErrorMessage(cpu: widget.currentCpu, mobo: item, ram: widget.currentRam, storage: widget.currentStorage, cooler: widget.currentCooler);
+                        else if (widget.slotType == "RAM") error = HeuristicEngine.getErrorMessage(ram: item, mobo: widget.currentMobo);
+                        else if (widget.slotType == "STORAGE") error = HeuristicEngine.getErrorMessage(storage: item, mobo: widget.currentMobo);
+                        else if (widget.slotType == "COOLER") error = HeuristicEngine.getErrorMessage(cooler: item, mobo: widget.currentMobo, cpu: widget.currentCpu);
                         SciFiDialog.show(context, "INCOMPATIBLE COMPONENT", error);
                         return;
                       }
-
-                      // ✅ INSTANT SOUND TRIGGER
-                      if (!isEquipped) {
-                        _playThwipSound();
-                      }
-
+                      if (!isEquipped) _playThwipSound();
                       widget.onEquip(isEquipped ? null : item);
                     },
                     onLongPress: () {
@@ -246,19 +207,15 @@ class _InventoryListState extends State<InventoryList> {
                   ),
                 ),
               ),
-
-              // 2. THE SPIDERWEB CORNER (SOLID WHITE FOR CONTRAST)
               if (isEquipped)
                 Positioned(
-                  top: 0,
-                  right: 0,
+                  top: 0, right: 0,
                   child: IgnorePointer(
                     child: Image.asset(
                       'assets/spiderwebcorner.png',
-                      width: 80,  
-                      height: 58,
-                      color: Colors.white, // ✅ SOLID WHITE (Maximum Contrast)
-                      fit: BoxFit.fill, 
+                      width: 80, height: 58,
+                      color: Colors.white,
+                      fit: BoxFit.fill,
                     ),
                   ),
                 ),

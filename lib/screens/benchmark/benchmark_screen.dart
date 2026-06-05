@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import '../../models/component_model.dart';
 import '../../data/games_db.dart';
+import '../simulator/widgets/glitters.dart';
 
 // ==========================================
-// SCREEN 1: THE DASHBOARD (Standard - UNTOUCHED)
+// SCREEN 1: THE DASHBOARD
 // ==========================================
 class BenchmarkScreen extends StatelessWidget {
   final Cpu cpu;
@@ -33,40 +33,49 @@ class BenchmarkScreen extends StatelessWidget {
         toolbarHeight: 0,
         automaticallyImplyLeading: false,
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          bool isWide = constraints.maxWidth > 600;
-          return SingleChildScrollView(
-            child: Container(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: isWide
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(flex: 6, child: _buildTargetSystemBox()),
-                        const SizedBox(width: 30),
-                        Expanded(flex: 4, child: _buildActionBox(context)),
-                      ],
-                    )
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          children: [
-                            const SizedBox(height: 10),
-                            _buildTargetSystemBox(),
-                          ],
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 20.0),
-                          child: _buildActionBox(context),
-                        ),
-                      ],
-                    ),
+      body: Stack(
+        children: [
+          const Positioned.fill(
+            child: CyberGlitters(),
+          ),
+          Positioned.fill(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                bool isWide = constraints.maxWidth > 600;
+                return SingleChildScrollView(
+                  child: Container(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                    child: isWide
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(flex: 6, child: _buildTargetSystemBox()),
+                              const SizedBox(width: 30),
+                              Expanded(flex: 4, child: _buildActionBox(context)),
+                            ],
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                children: [
+                                  const SizedBox(height: 10),
+                                  _buildTargetSystemBox(),
+                                ],
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 20.0),
+                                child: _buildActionBox(context),
+                              ),
+                            ],
+                          ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -78,7 +87,6 @@ class BenchmarkScreen extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Icon(Icons.radar, color: Colors.redAccent, size: 18),
             const SizedBox(width: 6),
             Text("TARGET SYSTEM",
                 style: GoogleFonts.orbitron(color: Colors.redAccent, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
@@ -86,7 +94,7 @@ class BenchmarkScreen extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.05),
             borderRadius: BorderRadius.circular(12),
@@ -180,7 +188,7 @@ class BenchmarkScreen extends StatelessWidget {
 }
 
 // ==========================================
-// SCREEN 2: THE NETFLIX LANES ENGINE (With Verdict)
+// SCREEN 2: THE RESULTS ENGINE
 // ==========================================
 class FullScreenResult extends StatefulWidget {
   final Cpu cpu;
@@ -202,16 +210,13 @@ class FullScreenResult extends StatefulWidget {
 
 class _FullScreenResultState extends State<FullScreenResult> {
   bool _isLoading = true;
+  String _resolution = "1080p"; 
   
-  // Data Containers
   List<Map<String, dynamic>> _esports = [];
   List<Map<String, dynamic>> _aaaTitles = [];
   List<Map<String, dynamic>> _workstation = [];
 
-  // Verdict Variables
   String _grade = "B";
-  String _mainBottleneck = "BALANCED";
-  Color _gradeColor = Colors.cyanAccent; // Changed to match blue theme
 
   @override
   void initState() {
@@ -219,105 +224,70 @@ class _FullScreenResultState extends State<FullScreenResult> {
     _runLogic();
   }
 
-  // --- SMART DIAGNOSIS ENGINE ---
-  String _getSmartDiagnosis(String gameName, String limiter, double fps, bool isWorkstation) {
-    if (isWorkstation) {
-       if (fps < 500) return "Multi-Core Bottleneck. Rendering tasks require high thread counts (i7/Ryzen 7+).";
-       return "High IPC & Multi-threading detected. Workstation grade performance.";
-    }
-
-    switch (gameName) {
-      case "Black Myth: Wukong":
-      case "Cyberpunk 2077":
-        if (limiter == "GPU") return "Lumen/Ray Tracing Overload. GPU Compute Units saturated.";
-        return "Asset Streaming Lag. CPU unable to feed geometry to GPU fast enough.";
-      
-      case "Spider-Man 2":
-        if (limiter == "GPU") return "VRAM Saturated. High-Res textures exceeding video memory.";
-        return "Traversal Stutter. CPU/SSD too slow for open-world streaming.";
-      
-      case "Valorant":
-      case "CS:GO 2":
-      case "League of Legends":
-        if (limiter == "CPU") return "Single-Core Speed Limit. Esports engines prefer High GHz over Core Count.";
-        return "Uncapped Frame Rate. System latency is minimal.";
-
-      case "Forza Horizon 5":
-      case "GTA V":
-      case "Fortnite":
-        if (limiter == "GPU") return "Rasterization Limit. Shader complexity high for this resolution.";
-        return "Physics/AI Calculation Lag. CPU struggling with open-world logic.";
-
-      default:
-        return limiter == "CPU" ? "CPU Logic Bound." : "GPU Compute Bound.";
-    }
-  }
-
   void _runLogic() async {
-    await Future.delayed(const Duration(seconds: 2));
+    setState(() => _isLoading = true);
+    await Future.delayed(const Duration(milliseconds: 800)); 
     
     List<Map<String, dynamic>> esportsTemp = [];
     List<Map<String, dynamic>> aaaTemp = [];
     List<Map<String, dynamic>> workstationTemp = [];
 
-    int cpuStrikes = 0;
-    int gpuStrikes = 0;
     double totalFps = 0;
     int gameCount = 0;
 
     for (var app in benchmarkGames) {
-      // Logic Calculation
-      int userCpuScore = (app.category == "Workstation") ? widget.cpu.workstationScore : widget.cpu.gamingScore;
-      int userGpuScore = widget.gpu?.performanceScore ?? 15;
-      
-      double cpuRatio = userCpuScore / (app.recCpuScore > 0 ? app.recCpuScore : 1);
-      double gpuRatio = userGpuScore / (app.recGpuScore > 0 ? app.recGpuScore : 1);
-      
-      String limiter = (cpuRatio < gpuRatio) ? "CPU" : "GPU";
-      if (app.category == "Workstation") limiter = "CPU"; 
+      // Direct 0-100 raw scores from your hardware models
+      double cScore = (app.category == "Workstation") ? widget.cpu.workstationScore.toDouble() : widget.cpu.gamingScore.toDouble();
+      double gScore = widget.gpu?.performanceScore.toDouble() ?? 15.0;
 
-      if (limiter == "CPU") cpuStrikes++; else gpuStrikes++;
-
-      double performanceRatio = (app.category == "Workstation") ? cpuRatio : min(cpuRatio, gpuRatio);
-      double fps = 60 * performanceRatio;
+      double fps = 0;
+      double workstationPts = 0;
       
-      if (widget.ram.capacity < app.recRamGB) fps *= 0.7;
-      if (app.needsSSD && widget.storage.type == 'HDD') fps *= 0.5;
-      if (fps > 240) fps = 240;
+      if (app.category == "Esports") {
+        // Simple mapping: 80 base + CPU push + minor GPU push
+        fps = 80.0 + (cScore * 4.5) + (gScore * 1.5);
+        if (_resolution == "4K") fps *= 0.65;
+      } 
+      else if (app.category == "Workstation") {
+        // Simple mapping: 300 base + heavy CPU focus
+        workstationPts = 300.0 + (cScore * 12.0) + (gScore * 5.0);
+      } 
+      else {
+        // AAA Games: 20 base + minor CPU push + heavy GPU push
+        fps = 20.0 + (cScore * 0.4) + (gScore * 1.4);
 
+        // Simple hardcoded modifiers to prevent identical FPS for different games
+        String name = app.name.toLowerCase();
+        if (name.contains("wukong") || name.contains("cyberpunk") || name.contains("heavy")) {
+          fps *= 0.85; // Penalty for heavy games
+        } else if (name.contains("gta") || name.contains("forza") || name.contains("spider")) {
+          fps *= 1.45; // Bonus for optimized/older games
+        }
+
+        if (_resolution == "4K") fps *= 0.50; // 4K cuts FPS in half
+      }
+
+      // Add tiny 2-5 FPS variation for realism
       if (app.category != "Workstation") {
+        fps += (Random().nextDouble() * 6) - 3;
+        if (fps < 15) fps = 15.0 + Random().nextDouble() * 5; // Absolute minimum floor
+        
         totalFps += fps;
         gameCount++;
       }
 
-      // --- NEW COLOR LOGIC (Blue Border / Red Text) ---
-      // We force the border color to be Cyan/Blue for that "Cyber" look
-      Color borderColor = Colors.cyanAccent; 
-      // We force status text to be Red as requested
-      Color statusTextColor = Colors.redAccent; 
-
       String status;
       if (app.category == "Workstation") {
-        int score = (1000 * performanceRatio).toInt();
-        if (score > 800) status = "EXCELLENT"; 
-        else if (score > 400) status = "GOOD"; 
-        else status = "WEAK CPU";
+        status = workstationPts > 1500 ? "ELITE" : (workstationPts > 800 ? "EXCELLENT" : "GOOD");
       } else {
-        if (fps >= 60) status = "SMOOTH"; 
-        else if (fps >= 30) status = "PLAYABLE"; 
-        else status = "$limiter LIMIT";
+        status = fps >= 144 ? "COMPETITIVE" : (fps >= 60 ? "SMOOTH" : (fps >= 30 ? "PLAYABLE" : "LIMIT"));
       }
-
-      String techAnalysis = _getSmartDiagnosis(app.name, limiter, (app.category == "Workstation" ? 1000 * performanceRatio : fps), app.category == "Workstation");
 
       var itemData = {
         'name': app.name,
-        'value': app.category == "Workstation" ? (1000 * performanceRatio).toInt().toString() : fps.toInt().toString(),
+        'value': app.category == "Workstation" ? workstationPts.toInt().toString() : fps.toInt().toString(),
         'unit': app.category == "Workstation" ? "pts" : "FPS",
-        'color': borderColor,      // BLUE OUTLINE
-        'textColor': statusTextColor, // RED TEXT
         'status': status,
-        'techAnalysis': techAnalysis,
         'imagePath': app.imagePath,
       };
 
@@ -326,15 +296,10 @@ class _FullScreenResultState extends State<FullScreenResult> {
       else aaaTemp.add(itemData);
     }
 
-    // Verdict Logic
-    if (gpuStrikes > cpuStrikes) { _mainBottleneck = "GPU BOTTLENECK"; } 
-    else if (cpuStrikes > gpuStrikes) { _mainBottleneck = "CPU BOTTLENECK"; } 
-    else { _mainBottleneck = "BALANCED"; } // Shortened text for compact UI
-
     double avgFps = (gameCount > 0) ? totalFps / gameCount : 0;
-    if (avgFps >= 100) _grade = "S"; 
-    else if (avgFps >= 60) _grade = "A"; 
-    else if (avgFps >= 45) _grade = "B"; 
+    if (avgFps >= 120) _grade = "S"; 
+    else if (avgFps >= 80) _grade = "A"; 
+    else if (avgFps >= 50) _grade = "B"; 
     else if (avgFps >= 30) _grade = "C"; 
     else _grade = "F"; 
 
@@ -350,81 +315,139 @@ class _FullScreenResultState extends State<FullScreenResult> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.redAccent)));
+    if (_isLoading) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.cyanAccent)));
 
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text("DIAGNOSTICS", style: GoogleFonts.orbitron(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+        backgroundColor: Colors.transparent, 
+        elevation: 0,
+        centerTitle: true, 
+        title: Text(
+          "SPYDAR MARK", 
+          style: GoogleFonts.orbitron(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 4,
+            shadows: const [
+              Shadow(color: Colors.cyanAccent, blurRadius: 10),
+              Shadow(color: Colors.cyanAccent, blurRadius: 20),
+            ]
+          )
+        ),
+        leading: IconButton(icon: const Icon(Icons.close, color: Colors.cyanAccent), onPressed: () => Navigator.pop(context)),
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- VERDICT HEADER (COMPACT VERSION) ---
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), // Reduced Margin
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Reduced Padding
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(12), // Smaller radius
-                border: Border.all(color: _gradeColor.withOpacity(0.5)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: Stack(
+        children: [
+          const Positioned.fill(
+            child: CyberGlitters(),
+          ),
+          SafeArea(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 40),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Grade Section
-                  Row(
-                    children: [
-                      Text("GRADE: ", style: GoogleFonts.shareTechMono(color: Colors.white54, fontSize: 14)),
-                      Text(_grade, style: GoogleFonts.orbitron(color: _gradeColor, fontSize: 32, fontWeight: FontWeight.bold)), // Smaller Font
-                    ],
-                  ),
-                  // Limiter Section
+                  // --- VERDICT HEADER (Removed Bottleneck Text, Locked to Cyan) ---
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
-                    child: Text(_mainBottleneck, style: GoogleFonts.shareTechMono(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                    width: double.infinity,
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), 
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), 
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(12), 
+                      border: Border.all(color: Colors.cyanAccent.withOpacity(0.5)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text("OVERALL GRADE: ", style: GoogleFonts.shareTechMono(color: Colors.white54, fontSize: 14)),
+                        Text(_grade, style: GoogleFonts.orbitron(color: Colors.cyanAccent, fontSize: 32, fontWeight: FontWeight.bold)), 
+                      ],
+                    ),
+                  ),
+
+                  // --- RESOLUTION TOGGLES ---
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildResolutionButton("1080p", Icons.hd),
+                        const SizedBox(width: 15),
+                        _buildResolutionButton("4K", Icons.monitor),
+                      ],
+                    ),
+                  ),
+
+                  // --- LANES ---
+                  _buildLaneHeader("ESPORTS PERFORMANCE ($_resolution)", Icons.bolt),
+                  _buildHorizontalLane(_esports),
+                  const SizedBox(height: 20), 
+
+                  _buildLaneHeader("HEAVY HITTERS (AAA) ($_resolution)", Icons.videogame_asset),
+                  _buildHorizontalLane(_aaaTitles),
+                  const SizedBox(height: 20),
+
+                  _buildLaneHeader("CREATOR WORKFLOW", Icons.design_services),
+                  _buildHorizontalLane(_workstation),
+                  
+                  const SizedBox(height: 30),
+
+                  // --- TWEAK BUTTON ---
+                  Center(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context), 
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.cyanAccent.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: Colors.cyanAccent),
+                        ),
+                        child: Text("TWEAK BUILD", style: GoogleFonts.orbitron(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ),
                   )
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            // --- LANES ---
-            _buildLaneHeader("ESPORTS PERFORMANCE", Icons.bolt),
-            _buildHorizontalLane(_esports),
-            const SizedBox(height: 20), // Tighter spacing
-
-            _buildLaneHeader("HEAVY HITTERS (AAA)", Icons.videogame_asset),
-            _buildHorizontalLane(_aaaTitles),
-            const SizedBox(height: 20),
-
-            _buildLaneHeader("CREATOR WORKFLOW", Icons.design_services),
-            _buildHorizontalLane(_workstation),
-            
-            const SizedBox(height: 30),
-
-            // --- TWEAK BUTTON ---
-            Center(
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context), 
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: _gradeColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: _gradeColor),
-                  ),
-                  child: Text("TWEAK BUILD", style: GoogleFonts.orbitron(color: _gradeColor, fontWeight: FontWeight.bold, fontSize: 12)),
-                ),
-              ),
-            )
+  Widget _buildResolutionButton(String res, IconData icon) {
+    bool isSelected = _resolution == res;
+    return GestureDetector(
+      onTap: () {
+        if (!isSelected) {
+          setState(() {
+            _resolution = res;
+            _runLogic(); 
+          });
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.cyanAccent.withOpacity(0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? Colors.cyanAccent : Colors.white24),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: isSelected ? Colors.cyanAccent : Colors.white54, size: 18),
+            const SizedBox(width: 6),
+            Text("ULTRA $res", style: GoogleFonts.orbitron(
+              color: isSelected ? Colors.cyanAccent : Colors.white54, 
+              fontSize: 12, 
+              fontWeight: FontWeight.bold
+            )),
           ],
         ),
       ),
@@ -436,7 +459,7 @@ class _FullScreenResultState extends State<FullScreenResult> {
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
         children: [
-          Icon(icon, color: Colors.redAccent, size: 14),
+          Icon(icon, color: Colors.cyanAccent, size: 14), // Changed to Cyan
           const SizedBox(width: 8),
           Text(title, style: GoogleFonts.shareTechMono(color: Colors.white70, fontSize: 12, letterSpacing: 1.2)),
         ],
@@ -446,7 +469,7 @@ class _FullScreenResultState extends State<FullScreenResult> {
 
   Widget _buildHorizontalLane(List<Map<String, dynamic>> items) {
     return SizedBox(
-      height: 140, // Reduced Height for compactness
+      height: 140, 
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -464,7 +487,7 @@ class _FullScreenResultState extends State<FullScreenResult> {
 }
 
 // ==========================================
-// TILE WIDGET (UPDATED FOR BLUE BORDER / RED TEXT)
+// TILE WIDGET (REMOVED CLICK INTERACTION)
 // ==========================================
 class HeroTile extends StatelessWidget {
   final Map<String, dynamic> item;
@@ -472,158 +495,62 @@ class HeroTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          PageRouteBuilder(
-            opaque: false,
-            transitionDuration: const Duration(milliseconds: 600),
-            reverseTransitionDuration: const Duration(milliseconds: 500),
-            pageBuilder: (_, __, ___) => HeroDetailScreen(item: item),
-          ),
-        );
-      },
-      child: Hero(
-        tag: item['name'],
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            width: 200, 
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.circular(12),
-              // BLUE OUTLINE (Using item['color'] which is now set to Cyan/Blue)
-              border: Border.all(color: item['color'].withOpacity(0.8), width: 1.5),
-              boxShadow: [BoxShadow(color: item['color'].withOpacity(0.1), blurRadius: 10)],
+    // Removed GestureDetector and Hero tag entirely so it is completely unclickable
+    return Container(
+      width: 200, 
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.cyanAccent.withOpacity(0.8), width: 1.5),
+        boxShadow: [BoxShadow(color: Colors.cyanAccent.withOpacity(0.1), blurRadius: 10)],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          children: [
+            if (item['imagePath'] != null)
+              Positioned.fill(
+                child: Opacity(
+                  opacity: 0.3,
+                  child: Image.asset(item['imagePath'], fit: BoxFit.cover),
+                ),
+              ),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.9)],
+                  ),
+                ),
+              ),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (item['imagePath'] != null)
-                    Positioned.fill(
-                      child: Opacity(
-                        opacity: 0.3,
-                        child: Image.asset(item['imagePath'], fit: BoxFit.cover),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(item['value'], style: GoogleFonts.orbitron(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(item['unit'], style: GoogleFonts.shareTechMono(color: Colors.white70, fontSize: 10)),
                       ),
-                    ),
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, Colors.black.withOpacity(0.9)],
-                        ),
-                      ),
-                    ),
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(item['value'], style: GoogleFonts.orbitron(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                            const SizedBox(width: 4),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Text(item['unit'], style: GoogleFonts.shareTechMono(color: Colors.white70, fontSize: 10)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(item['name'], maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.shareTechMono(color: Colors.white, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        // RED STATUS TEXT
-                        Text(item['status'], style: GoogleFonts.shareTechMono(color: item['textColor'], fontSize: 10, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
+                  const SizedBox(height: 4),
+                  Text(item['name'], maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.shareTechMono(color: Colors.white, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  Text(item['status'], style: GoogleFonts.shareTechMono(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ==========================================
-// DETAIL POPUP (COMPACT VERSION)
-// ==========================================
-class HeroDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> item;
-  const HeroDetailScreen({super.key, required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black.withOpacity(0.9),
-      body: Center(
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Hero(
-            tag: item['name'],
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: MediaQuery.of(context).size.width * 0.7, 
-                height: 330,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF111111),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: item['color'], width: 2),
-                  boxShadow: [BoxShadow(color: item['color'].withOpacity(0.2), blurRadius: 40)],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(item['name'], 
-                      textAlign: TextAlign.center, 
-                      style: GoogleFonts.orbitron(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 20),
-                    Text(item['value'], 
-                      style: GoogleFonts.orbitron(color: item['color'], fontSize: 60, fontWeight: FontWeight.bold)),
-                    Text(item['unit'], 
-                      style: GoogleFonts.shareTechMono(color: Colors.grey, fontSize: 14)),
-                    const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.analytics_outlined, color: Colors.white70, size: 14),
-                              const SizedBox(width: 8),
-                              Text("DIAGNOSIS", style: GoogleFonts.shareTechMono(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 12)),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(item['techAnalysis'], 
-                            textAlign: TextAlign.center, 
-                            style: GoogleFonts.roboto(color: Colors.white, height: 1.3, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    Text("TAP TO CLOSE", style: GoogleFonts.shareTechMono(color: Colors.white38, fontSize: 10)),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          ],
         ),
       ),
     );

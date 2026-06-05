@@ -9,15 +9,20 @@ import 'widgets/inventory_list.dart';
 import '../../../logic/heuristic_engine.dart';
 import 'widgets/cpu_performance_card.dart';
 import 'widgets/gpu_performance_card.dart';
-
+import 'widgets/sorting.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:ui';
 import '../../../logic/boot.dart';
 
 class SimulatorScreen extends StatefulWidget {
   // New: Accept the loaded build data (optional)
   final Map<String, dynamic>? loadedBuild; 
+  final bool hidePowerButton; // <--- 1. ADD THIS LINE
 
-  const SimulatorScreen({super.key, this.loadedBuild}); 
+  // 2. UPDATE THE CONSTRUCTOR TO LOOK LIKE THIS:
+  const SimulatorScreen({super.key, this.loadedBuild, this.hidePowerButton = false});
+
+  
 
   @override
   State<SimulatorScreen> createState() => _SimulatorScreenState();
@@ -25,7 +30,9 @@ class SimulatorScreen extends StatefulWidget {
 
 
 class _SimulatorScreenState extends State<SimulatorScreen> {
+  
   // Neon palette
+  String _currentWallpaper = 'assets/web.png';
   String? selectedSlot;
   Cpu? _previewCpu; // Stores the CPU currently being previewed
   Cpu? _equippedCpu;
@@ -48,10 +55,27 @@ List<Psu> _currentPsuList = ComponentsDB.psus;
 Cooler? _equippedCooler;
 Cooler? _previewCooler;
 List<Cooler> _currentCoolerList = ComponentsDB.coolers;
+bool _isSorting = false; 
+final ScrollController _detailScrollController = ScrollController();
+  
+
+// For access in levels
+  Gpu? get currentGpu => _equippedGpu;
+  Psu? get currentPsu => _equippedPsu;
+  Cpu? get currentCpu => _equippedCpu;
+  Storage? get currentStorage => _equippedStorage;
+  Cooler? get currentCooler => _equippedCooler;
+  Ram? get currentRam => _equippedRam;
+  Motherboard? get currentMotherboard => _equippedMotherboard;
+  bool get isMenuOpen => selectedSlot != null;
+  void closeMenuExternal() => _closeMenu();
+
+
   static const Color neonCyan = Color(0xFF00F3FF);
   static const Color neonRed = Color(0xFFFF003C);
   static const Color neonPurple = Color.fromARGB(255, 221, 147, 234);
   static const Color bgDark = Color(0xFF050505);
+  
   
   bool _isImageLoaded = false;
   bool _showMenuContent = false; // Controls the text staggering
@@ -69,6 +93,16 @@ bool _showPerformanceStats = false; // Controls the view inside the panel
       cooler: _equippedCooler,
      
     );
+  }
+  List<dynamic> _getRawDatabaseList(String slot) {
+    if (slot == "CPU") return ComponentsDB.cpus;
+    if (slot == "RAM") return ComponentsDB.ramSticks;
+    if (slot == "MOTHER\nBOARD") return ComponentsDB.motherboards;
+    if (slot == "GPU") return ComponentsDB.gpus;            
+    if (slot == "STORAGE") return ComponentsDB.storageItems;
+    if (slot == "PSU") return ComponentsDB.psus;             
+    if (slot == "COOLER") return ComponentsDB.coolers;       
+    return [];
   }
 // --- NEW: LOGIC TO LOAD SAVED PARTS ---
   void _loadSavedBuild() {
@@ -136,7 +170,7 @@ _equippedPsu = ComponentsDB.psus.firstWhere(
   @override
   void initState() {
     super.initState();
-    
+    _loadWallpaper();
     // 1. CHECK FOR SAVED DATA IMMEDIATELY
     if (widget.loadedBuild != null) {
       _loadSavedBuild(); 
@@ -150,6 +184,14 @@ _equippedPsu = ComponentsDB.psus.firstWhere(
         });
       }
     });
+  }
+  Future<void> _loadWallpaper() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _currentWallpaper = prefs.getString('saved_wallpaper') ?? 'assets/web.png';
+      });
+    }
   }
 
  void _openMenu(String slot) {
@@ -215,22 +257,22 @@ _equippedPsu = ComponentsDB.psus.firstWhere(
 
     // CASE A: SWITCHING (Menu is ALREADY OPEN)
     // We must fade out -> swap data -> fade in to prevent flicker
-    if (_menuStage == 2) {
+   if (_menuStage == 2) {
       setState(() {
         _showMenuContent = false; // 1. Start Fade Out
+        _isSorting = false;       // ✅ ADD THIS LINE HERE! It forces the default list view.
       });
 
       Future.delayed(const Duration(milliseconds: 150), () {
         if (mounted) {
           setState(() {
             // 2. NOW it is safe to clear previews and swap slots
-            // because the user can't see the content right now (opacity is 0)
-           _previewCpu = null;
+            _previewCpu = null;
             _previewMotherboard = null;
             _previewRam = null;
             _previewGpu = null;
-            _previewStorage = null; // Don't forget this
-            _previewPsu = null;     // Don't forget this
+            _previewStorage = null; 
+            _previewPsu = null;     
             _previewCooler = null;
             selectedSlot = slot; 
             _showMenuContent = true; // 3. Start Fade In
@@ -245,6 +287,7 @@ _equippedPsu = ComponentsDB.psus.firstWhere(
     setState(() {
       _previewCpu = null;
       _previewMotherboard = null;
+      _isSorting = false;
       _previewRam = null;
       _previewGpu = null;
       _previewStorage = null;
@@ -260,6 +303,7 @@ _equippedPsu = ComponentsDB.psus.firstWhere(
       if (mounted && selectedSlot == slot) {
         setState(() {
           _menuStage = 2; 
+              
           _showMenuContent = true; 
         });
       }
@@ -274,7 +318,7 @@ _equippedPsu = ComponentsDB.psus.firstWhere(
     // 1. Hide the list content & CLEAR PREVIEWS
     setState(() {
       _showMenuContent = false;
-      
+      _isSorting = false;
       // ✅ FIX: Kill any active details panel so it doesn't linger
       _previewCpu = null;
       _previewMotherboard = null;
@@ -377,7 +421,7 @@ _equippedPsu = ComponentsDB.psus.firstWhere(
     return Scaffold(
       backgroundColor: bgDark,
       // Wrap the FAB in AnimatedScale
-      floatingActionButton: AnimatedScale(
+     floatingActionButton: widget.hidePowerButton ? null : AnimatedScale(
         scale: _menuStage == 0 ? 1.0 : 0.0, // If Menu Open (Stage 1 or 2), Scale to 0 (Hide)
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutBack, // Nice bouncy effect
@@ -409,22 +453,25 @@ _equippedPsu = ComponentsDB.psus.firstWhere(
             child: Container(color: bgDark),
           ),
 
-          // 2. The Image with Fade-In animation
+         // 2. The Image with Fade-In animation
           if (_isImageLoaded)
             Positioned.fill(
-              child: Image.asset(
-                'assets/web.png',
-                fit: BoxFit.cover,
-                cacheWidth: 2160,
-                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                  if (wasSynchronouslyLoaded) return child;
-                  return AnimatedOpacity(
-                    opacity: frame == null ? 0 : 1,
-                    duration: const Duration(seconds: 1),
-                    curve: Curves.easeOut,
-                    child: child,
-                  );
-                },
+              child: Opacity( // Added Opacity to match your OS vibe
+                opacity: 0.8,
+                child: Image.asset(
+                  _currentWallpaper, // ✅ NOW USES THE DYNAMIC VARIABLE
+                  fit: BoxFit.cover,
+                  cacheWidth: 2160,
+                  frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                    if (wasSynchronouslyLoaded) return child;
+                    return AnimatedOpacity(
+                      opacity: frame == null ? 0 : 1,
+                      duration: const Duration(seconds: 1),
+                      curve: Curves.easeOut,
+                      child: child,
+                    );
+                  },
+                ),
               ),
             ),
 
@@ -614,55 +661,92 @@ child: AnimatedSwitcher(
           ),
         )
       // STATE 2: MENU OPEN (Big Box)
-      : LayoutBuilder( // ✅ FIX: SAFETY CHECK
-          key: const ValueKey(1),
-          // INSIDE LayoutBuilder...
+      : LayoutBuilder(
+          key: ValueKey(_isSorting ? "Sorting" : "List"), // ✅ THIS FORCES THE REBUILD
           builder: (context, constraints) {
             if (constraints.maxHeight < 100) return const SizedBox();
 
-            // ✅ FIX: Check BOTH variables
-          return (_previewCpu != null || _previewMotherboard != null || _previewRam != null || _previewGpu != null || _previewStorage != null || _previewPsu != null || _previewCooler != null)
-                ? _buildDetailPanel() // Show details if EITHER is selected
-                : Column(
-                    children: [
-                      
-                      // --- HEADER ---
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 15, vertical: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(16)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "SELECT ${currentSlot.replaceAll('\n', ' ')}",
-                              style: GoogleFonts.orbitron(
-                                  color: themeColor,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900),
-                            ),
-                            GestureDetector(
-                              onTap: _closeMenu,
-                              child: const Icon(Icons.close,
-                                  color: neonRed, size: 20),
-                            )
-                          ],
-                        ),
-                      ),
+            // 1. Are we looking at a specific item's details?
+            if (_previewCpu != null || _previewMotherboard != null || _previewRam != null || _previewGpu != null || _previewStorage != null || _previewPsu != null || _previewCooler != null) {
+              return _buildDetailPanel();
+            }
 
-                      // --- LIST ---
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          child: _buildInventoryList(themeColor),
-                        ),
+            // 2. Are we sorting? Show the embedded menu
+            if (_isSorting) {
+              return EmbeddedSortMenu(
+                slotType: currentSlot,
+                allItems: _getRawDatabaseList(currentSlot), 
+                themeColor: themeColor,
+                onClose: () {
+                  setState(() { _isSorting = false; });
+                },
+               onApply: (filteredResults) {
+                  setState(() {
+                    if (currentSlot == "CPU") _currentCpuList = filteredResults.cast<Cpu>();
+                    else if (currentSlot == "RAM") _currentRamList = filteredResults.cast<Ram>();
+                    else if (currentSlot == "MOTHER\nBOARD") _currentMoboList = filteredResults.cast<Motherboard>();
+                    else if (currentSlot == "GPU") _currentGpuList = filteredResults.cast<Gpu>();                 // ✅ ADDED
+                    else if (currentSlot == "STORAGE") _currentStorageList = filteredResults.cast<Storage>();     // ✅ ADDED
+                    else if (currentSlot == "PSU") _currentPsuList = filteredResults.cast<Psu>();                 // ✅ ADDED
+                    else if (currentSlot == "COOLER") _currentCoolerList = filteredResults.cast<Cooler>();        // ✅ ADDED
+                    _isSorting = false; 
+                  });
+                },
+              );
+            }
+
+            // 3. Otherwise, show the standard list
+            return Column(
+              children: [
+                // --- HEADER ---
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "SELECT ${currentSlot.replaceAll('\n', ' ')}",
+                        style: GoogleFonts.orbitron(
+                            color: themeColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900),
                       ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              setState(() { 
+                                _isSorting = true; 
+                                print("Sort tapped! _isSorting is now $_isSorting"); // Debug print
+                              });
+                            },
+                            child: Icon(Icons.sort, color: themeColor, size: 20),
+                          ),
+                          const SizedBox(width: 15),
+                          GestureDetector(
+                            onTap: _closeMenu,
+                            child: const Icon(Icons.close, color: neonRed, size: 20),
+                          ),
+                        ],
+                      )
                     ],
-                  );
+                  ),
+                ),
+
+                // --- LIST ---
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    child: _buildInventoryList(themeColor),
+                  ),
+                ),
+              ],
+            );
           },
         ),
 ),
@@ -1446,7 +1530,7 @@ if (selectedSlot == "PSU") {
     return Container();
   }
 
-// ✅ HELPER: Creates the "Spec Rows" (Base Clock, Boost Clock, etc.)
+// ✅ HELPER: Creates the "Spec Rows" (Base Clock etc.)
  Widget _buildSpecRow(IconData icon, String label, String value, Color color) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1454,15 +1538,27 @@ if (selectedSlot == "PSU") {
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.4),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3), width: 1), // ✅ Uses passed color
+        border: Border.all(color: color.withOpacity(0.3), width: 1), 
       ),
       child: Row(
+        // We add this so if the text wraps to 2 lines, the icon and label stay at the top instead of centering
+        crossAxisAlignment: CrossAxisAlignment.start, 
         children: [
-          Icon(icon, color: color, size: 18), // ✅ Uses passed color
+          Icon(icon, color: color, size: 18), 
           const SizedBox(width: 12),
           Text(label, style: GoogleFonts.roboto(color: Colors.grey, fontSize: 12)),
-          const Spacer(),
-          Text(value, style: GoogleFonts.orbitron(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+          
+          const SizedBox(width: 16), // Replaces the Spacer() to give a fixed gap
+          
+          // ✅ FIX: Wrapped the value in Expanded. This tells it to take up the remaining space, 
+          // push to the right, and safely wrap to the next line if it's too long!
+          Expanded(
+            child: Text(
+              value, 
+              textAlign: TextAlign.right, // Keeps it glued to the right wall
+              style: GoogleFonts.orbitron(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, height: 1.3),
+            ),
+          ),
         ],
       ),
     );
@@ -1532,274 +1628,268 @@ Widget _buildDiagnosticCard(String title, String val, double progress, Color col
 
  
  // ✅ FULL HEIGHT DETAIL VIEW (Drill-Down)
-  // ✅ 3. UPDATED DETAIL PANEL (Button at Bottom)
- Widget _buildDetailPanel() {
-  // 1. DETERMINE WHAT WE ARE LOOKING AT
-  final bool isCpu = _previewCpu != null;
-  final bool isMobo = _previewMotherboard != null;
-  final bool isRam = _previewRam != null;
-  final bool isGpu = _previewGpu != null;
-  final bool isStorage = _previewStorage != null;
-  final bool isPsu = _previewPsu != null;
-  final bool isCooler = _previewCooler != null;
+  Widget _buildDetailPanel() {
+    // 1. DETERMINE WHAT WE ARE LOOKING AT
+    final bool isCpu = _previewCpu != null;
+    final bool isMobo = _previewMotherboard != null;
+    final bool isRam = _previewRam != null;
+    final bool isGpu = _previewGpu != null;
+    final bool isStorage = _previewStorage != null;
+    final bool isPsu = _previewPsu != null;
+    final bool isCooler = _previewCooler != null;
 
-  // Set the theme color
-  final Color themeColor = isCooler 
-      ? neonPurple 
-      : ((isGpu || isStorage || isPsu) ? neonRed : neonCyan);
+    // Set the theme color
+    final Color themeColor = isCooler 
+        ? neonPurple 
+        : ((isGpu || isStorage || isPsu) ? neonRed : neonCyan);
 
-  String name = "";
-  num price = 0;
+    String name = "";
+    num price = 0;
 
-  // ... (Your existing Name/Price logic - COPY AS IS) ...
-  if (isCpu) { name = _previewCpu!.name; price = _previewCpu!.price; } 
-  else if (isMobo) { name = _previewMotherboard!.name; price = _previewMotherboard!.price; }
-  else if (isRam) { name = _previewRam!.name; price = _previewRam!.price; }
-  else if (isGpu) { name = _previewGpu!.name; price = _previewGpu!.price; }
-  else if (isStorage) { name = _previewStorage!.name; price = _previewStorage!.price; }
-  else if (isPsu) { name = _previewPsu!.name; price = _previewPsu!.price; }
-  else if (isCooler) { name = _previewCooler!.name; price = _previewCooler!.price; }
+    if (isCpu) { name = _previewCpu!.name; price = _previewCpu!.price; } 
+    else if (isMobo) { name = _previewMotherboard!.name; price = _previewMotherboard!.price; }
+    else if (isRam) { name = _previewRam!.name; price = _previewRam!.price; }
+    else if (isGpu) { name = _previewGpu!.name; price = _previewGpu!.price; }
+    else if (isStorage) { name = _previewStorage!.name; price = _previewStorage!.price; }
+    else if (isPsu) { name = _previewPsu!.name; price = _previewPsu!.price; }
+    else if (isCooler) { name = _previewCooler!.name; price = _previewCooler!.price; }
 
-  // ... (Your existing Compatibility logic - COPY AS IS) ...
-  bool isCompatible = true;
-  if (isCpu) isCompatible = HeuristicEngine.checkCompatibility(cpu: _previewCpu, mobo: _equippedMotherboard, cooler: _equippedCooler);
-  else if (isMobo) isCompatible = HeuristicEngine.checkCompatibility(mobo: _previewMotherboard, cpu: _equippedCpu, ram: _equippedRam, storage: _equippedStorage, cooler: _equippedCooler);
-  else if (isRam) isCompatible = HeuristicEngine.checkCompatibility(ram: _previewRam, mobo: _equippedMotherboard);
-  else if (isStorage) isCompatible = HeuristicEngine.checkCompatibility(storage: _previewStorage, mobo: _equippedMotherboard);
-  else if (isCooler) isCompatible = HeuristicEngine.checkCoolerCompatibility(cooler: _previewCooler, mobo: _equippedMotherboard, cpu: _equippedCpu);
+    bool isCompatible = true;
+    if (isCpu) isCompatible = HeuristicEngine.checkCompatibility(cpu: _previewCpu, mobo: _equippedMotherboard, cooler: _equippedCooler);
+    else if (isMobo) isCompatible = HeuristicEngine.checkCompatibility(mobo: _previewMotherboard, cpu: _equippedCpu, ram: _equippedRam, storage: _equippedStorage, cooler: _equippedCooler);
+    else if (isRam) isCompatible = HeuristicEngine.checkCompatibility(ram: _previewRam, mobo: _equippedMotherboard);
+    else if (isStorage) isCompatible = HeuristicEngine.checkCompatibility(storage: _previewStorage, mobo: _equippedMotherboard);
+    else if (isCooler) isCompatible = HeuristicEngine.checkCoolerCompatibility(cooler: _previewCooler, mobo: _equippedMotherboard, cpu: _equippedCpu);
 
-  // ... (Your existing Equipped logic - COPY AS IS) ...
-  bool isEquipped = false;
-  if (isCpu) isEquipped = _equippedCpu != null && _equippedCpu!.name == name;
-  else if (isMobo) isEquipped = _equippedMotherboard != null && _equippedMotherboard!.name == name;
-  else if (isRam) isEquipped = _equippedRam != null && _equippedRam!.name == name;
-  else if (isGpu) isEquipped = _equippedGpu != null && _equippedGpu!.name == name;
-  else if (isStorage) isEquipped = _equippedStorage != null && _equippedStorage!.name == name;
-  else if (isPsu) isEquipped = _equippedPsu?.name == name;
-  else if (isCooler) isEquipped = _equippedCooler?.name == name;
+    bool isEquipped = false;
+    if (isCpu) isEquipped = _equippedCpu != null && _equippedCpu!.name == name;
+    else if (isMobo) isEquipped = _equippedMotherboard != null && _equippedMotherboard!.name == name;
+    else if (isRam) isEquipped = _equippedRam != null && _equippedRam!.name == name;
+    else if (isGpu) isEquipped = _equippedGpu != null && _equippedGpu!.name == name;
+    else if (isStorage) isEquipped = _equippedStorage != null && _equippedStorage!.name == name;
+    else if (isPsu) isEquipped = _equippedPsu?.name == name;
+    else if (isCooler) isEquipped = _equippedCooler?.name == name;
 
-  final Color buttonActiveColor = isEquipped ? neonRed : (isCompatible ? neonCyan : Colors.white24);
+    final Color buttonActiveColor = isEquipped ? neonRed : (isCompatible ? neonCyan : Colors.white24);
 
-  return Container(
-    width: double.infinity,
-    height: double.infinity,
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: const Color(0xFF0A0A12).withOpacity(0.95),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: themeColor.withOpacity(0.2), width: 1),
-    ),
-    child: Column(
-      children: [
-        // --- HEADER ---
-        Row(
-          children: [
-            Container(
-              width: 45, height: 45,
-              decoration: BoxDecoration(
-                color: Colors.black, borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: themeColor, width: 1.5),
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0A12).withOpacity(0.95),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: themeColor.withOpacity(0.2), width: 1),
+      ),
+      child: Column(
+        children: [
+          // --- HEADER ---
+          Row(
+            children: [
+              Container(
+                width: 45, height: 45,
+                decoration: BoxDecoration(
+                  color: Colors.black, borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: themeColor, width: 1.5),
+                ),
+                child: Icon(
+                  isCpu ? Icons.memory : 
+                  (isMobo ? Icons.developer_board : 
+                  (isRam ? Icons.storage : 
+                  (isStorage ? Icons.save : 
+                  (isPsu ? Icons.power : 
+                  (isCooler ? Icons.ac_unit : Icons.videogame_asset))))),
+                  size: 24, 
+                  color: themeColor
+                ),
               ),
-              child: Icon(
-                isCpu ? Icons.memory : 
-                (isMobo ? Icons.developer_board : 
-                (isRam ? Icons.storage : 
-                (isStorage ? Icons.save : 
-                (isPsu ? Icons.power : 
-                (isCooler ? Icons.ac_unit : Icons.videogame_asset))))),
-                size: 24, 
-                color: themeColor
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.orbitron(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)
-                  ),
-                  Text("₹${price.toStringAsFixed(0)}", 
-                    style: GoogleFonts.roboto(fontSize: 12, color: themeColor)
-                  ),
-                ],
-              ),
-            ),
-            
-            // ✅ BACK BUTTON (With logic to close stats view first)
-            InkWell(
-              onTap: () => setState(() { 
-                // 1. If we are viewing stats, go back to specs list
-                if (_showPerformanceStats) {
-                  _showPerformanceStats = false;
-                  return;
-                }
-                // 2. Otherwise close the whole menu
-                _previewCpu = null; _previewMotherboard = null; _previewRam = null; 
-                _previewGpu = null; _previewStorage = null; _previewPsu = null;
-                _previewCooler = null; 
-              }),
-              child: const Padding(
-                padding: EdgeInsets.all(4.0),
-                child: Icon(Icons.arrow_back, color: Colors.white54, size: 22),
-              ),
-            ),
-          ],
-        ),
-
-        const Divider(color: Colors.white12, height: 20),
-
-        // --- CONTENT AREA (Swaps between Stats and List) ---
-        Expanded(
-          child: _showPerformanceStats && (isCpu || isGpu)
-            ? Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: isCpu 
-                           ? CpuPerformanceCard(cpu: _previewCpu!) 
-                           : GpuPerformanceCard(gpu: _previewGpu!), // ✅ NEW WIDGET CALL
-                      ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.orbitron(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)
                     ),
-                  ),
-                ],
-              )
-            :
-            // VIEW B: STANDARD SPEC LIST (With the Tile at the top)
-            RawScrollbar(
-  thumbColor: themeColor.withOpacity(0.5),
-  radius: const Radius.circular(20),
-  thickness: 4,
-  thumbVisibility: true,
-  child: SingleChildScrollView(
-    physics: const BouncingScrollPhysics(),
-    padding: const EdgeInsets.only(right: 12),
-    child: Column(
-      children: [
-        // ✅ 1. THE PERFORMANCE TILE (Clean and alone at the top)
-        if (isCpu || isGpu)
-          _buildActionTile(
-            title: "Performance Analysis",
-            subtitle: isCpu ? "Gaming & Workstation Scores" : "3DMark Benchmark Power",
-            color: isCpu ? neonCyan : neonRed,
-            onTap: () => setState(() => _showPerformanceStats = true),
-          ),
-
-                    // ... EXISTING SPEC ROWS ...
-                    if (isCpu) ...[
-                        _buildSpecRow(FontAwesomeIcons.gaugeHigh, "Base Clock", "${_previewCpu!.baseClock} GHz", themeColor),
-                        _buildSpecRow(FontAwesomeIcons.bolt, "Boost Clock", "4.6 GHz", themeColor), 
-                        _buildSpecRow(FontAwesomeIcons.microchip, "Cores", "${_previewCpu!.coreCount}", themeColor),
-                        _buildSpecRow(Icons.layers, "Threads", "${_previewCpu!.threads}", themeColor),
-                        _buildSpecRow(Icons.memory, "Socket", _previewCpu!.socket, themeColor),
-                        _buildSpecRow(Icons.graphic_eq, "Graphics", _previewCpu!.integratedGraphics, themeColor),
-                        _buildSpecRow(Icons.thermostat, "TDP", "${_previewCpu!.tdp}W", themeColor),
-                    ] else if (isMobo) ...[
-                        _buildSpecRow(Icons.memory, "Socket", _previewMotherboard!.socket, themeColor),
-                        _buildSpecRow(Icons.aspect_ratio, "Form Factor", _previewMotherboard!.formFactor, themeColor),
-                        _buildSpecRow(Icons.developer_board, "Memory", _previewMotherboard!.memoryType, themeColor),
-                        _buildSpecRow(Icons.sd_storage, "Max RAM", "${_previewMotherboard!.maxRam} GB", themeColor),
-                        _buildSpecRow(Icons.radar, "RAM Slots", "${_previewMotherboard!.memorySlots} Slots", themeColor),
-                        _buildSpecRow(Icons.wifi, "WiFi", _previewMotherboard!.hasWifi ? _previewMotherboard!.wifiVersion ?? "WiFi 6" : "No", themeColor),
-                        _buildSpecRow(Icons.save, "M.2 Slots", "${_previewMotherboard!.m2Slots}", themeColor),
-                        _buildSpecRow(Icons.speed, "PCIe Gen", "Gen ${_previewMotherboard!.pcieGen}", themeColor),
-                    ] else if (isRam) ...[
-                        _buildSpecRow(Icons.storage, "Type", _previewRam!.type, themeColor),
-                        _buildSpecRow(Icons.speed, "Speed", "${_previewRam!.speed} MHz", themeColor),
-                        _buildSpecRow(Icons.data_usage, "Capacity", "${_previewRam!.capacity} GB", themeColor),
-                        _buildSpecRow(Icons.view_module, "Modules", "${_previewRam!.modules} Sticks", themeColor),
-                        _buildSpecRow(Icons.color_lens, "Style", _previewRam!.color, themeColor),
-                    ] else if (isGpu) ...[
-                        _buildSpecRow(Icons.videogame_asset, "VRAM", "${_previewGpu!.vram} GB", themeColor),
-                        _buildSpecRow(Icons.memory, "Type", _previewGpu!.memoryType, themeColor),
-                        _buildSpecRow(Icons.grid_4x4, "Cores", "${_previewGpu!.cores}", themeColor),
-                        _buildSpecRow(Icons.compare_arrows, "Bus Width", "${_previewGpu!.busWidth}-bit", themeColor),
-                        _buildSpecRow(Icons.speed, "PCIe Gen", "Gen ${_previewGpu!.pcieGen}", themeColor),
-                        _buildSpecRow(Icons.speed, "Clock", "${_previewGpu!.clock} MHz", themeColor),
-                        _buildSpecRow(Icons.speed, "FrameGen", "${_previewGpu!.upscaling}", themeColor),
-                        _buildSpecRow(Icons.bolt, "TDP", "${_previewGpu!.tdp} W", themeColor),
-                    ] else if (isStorage) ...[
-                        _buildSpecRow(Icons.type_specimen, "Type", _previewStorage!.type, themeColor),
-                        _buildSpecRow(Icons.folder_zip, "Format", _previewStorage!.format, themeColor),
-                        _buildSpecRow(Icons.storage, "Capacity", "${_previewStorage!.capacity} GB", themeColor),
-                        _buildSpecRow(Icons.download, "Read Speed", "${_previewStorage!.readSpeed} MB/s", themeColor),
-                        _buildSpecRow(Icons.upload, "Write Speed", "${_previewStorage!.writeSpeed} MB/s", themeColor),
-                        _buildSpecRow(Icons.speed, "PCIe Gen", _previewStorage!.pcieGen == 0 ? "SATA" : "Gen ${_previewStorage!.pcieGen}", themeColor),
-                    ] else if (isPsu) ...[
-                        _buildSpecRow(Icons.bolt, "Wattage", "${_previewPsu!.wattage} W", themeColor),
-                        _buildSpecRow(Icons.high_quality, "Efficiency", _previewPsu!.efficiency, themeColor),
-                        _buildSpecRow(Icons.settings_input_component, "Modular", _previewPsu!.isModular ? "Fully Modular" : "Fixed Cables", themeColor),
-                        _buildSpecRow(Icons.branding_watermark, "Brand", _previewPsu!.brand, themeColor),
-                    ] else if (isCooler) ...[ 
-                        _buildSpecRow(Icons.mode_fan_off, "Type", _previewCooler!.type, themeColor),
-                        _buildSpecRow(Icons.cyclone, "Fan Count", "${_previewCooler!.fanCount}", themeColor),
-                        _buildSpecRow(Icons.aspect_ratio, "Fan Size", "${_previewCooler!.fanSize}mm", themeColor),
-                        _buildSpecRow(Icons.memory, "Sockets", _previewCooler!.supportedSockets.join(", "), themeColor),
-                        _buildSpecRow(Icons.thermostat, "Cooling Power", "${_previewCooler!.computedTdp}W", themeColor),
-                        _buildSpecRow(Icons.lightbulb, "RGB", _previewCooler!.hasRGB ? "Yes" : "No", themeColor),
-                    ],
-
-                    const SizedBox(height: 30),
-
-                    // --- EQUIP BUTTON ---
-                    GestureDetector(
-                      onTap: () {
-                        if (!isCompatible && !isEquipped) {
-                          HapticFeedback.vibrate();
-                          return; 
-                        }
-                        if (isCpu) _equipComponent(isEquipped ? null : _previewCpu);
-                        else if (isMobo) _equipMotherboard(isEquipped ? null : _previewMotherboard);
-                        else if (isRam) setState(() => _equippedRam = isEquipped ? null : _previewRam);
-                        else if (isGpu) setState(() => _equippedGpu = isEquipped ? null : _previewGpu);
-                        else if (isStorage) setState(() => _equippedStorage = isEquipped ? null : _previewStorage);
-                        else if (isPsu) setState(() => _equippedPsu = isEquipped ? null : _previewPsu);
-                        else if (isCooler) setState(() => _equippedCooler = isEquipped ? null : _previewCooler);
-                      },
-                      child: Opacity(
-                        opacity: (isCompatible || isEquipped) ? 1.0 : 0.5,
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            color: buttonActiveColor.withOpacity(0.1), 
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: buttonActiveColor, width: 1.5),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                isEquipped ? Icons.delete_outline : (isCompatible ? Icons.build_circle_outlined : Icons.block), 
-                                color: buttonActiveColor, 
-                                size: 20
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                isEquipped ? "REMOVE COMPONENT" : (isCompatible ? "EQUIP COMPONENT" : "INCOMPATIBLE"),
-                                style: GoogleFonts.orbitron(
-                                  color: (isCompatible || isEquipped) ? Colors.white : Colors.white38, 
-                                  fontSize: 13, 
-                                  fontWeight: FontWeight.bold
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    Text("₹${price.toStringAsFixed(0)}", 
+                      style: GoogleFonts.roboto(fontSize: 12, color: themeColor)
                     ),
-                    const SizedBox(height: 20),
                   ],
                 ),
               ),
-            ),
-        ),
-      ],
-    ),
-  );
-}
+              
+              InkWell(
+                onTap: () => setState(() { 
+                  if (_showPerformanceStats) {
+                    _showPerformanceStats = false;
+                    return;
+                  }
+                  _previewCpu = null; _previewMotherboard = null; _previewRam = null; 
+                  _previewGpu = null; _previewStorage = null; _previewPsu = null;
+                  _previewCooler = null; 
+                }),
+                child: const Padding(
+                  padding: EdgeInsets.all(4.0),
+                  child: Icon(Icons.arrow_back, color: Colors.white54, size: 22),
+                ),
+              ),
+            ],
+          ),
+
+          const Divider(color: Colors.white12, height: 20),
+
+          // --- CONTENT AREA (Swaps between Stats and List) ---
+          Expanded(
+            child: _showPerformanceStats && (isCpu || isGpu)
+              ? Column(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        primary: false, 
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: isCpu 
+                             ? CpuPerformanceCard(cpu: _previewCpu!) 
+                             : GpuPerformanceCard(gpu: _previewGpu!), 
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : 
+              // ✅ SAFELY ADDED RAWSCROLLBAR BACK WITH EXCLUSIVE CONTROLLER
+              RawScrollbar(
+                controller: _detailScrollController, // 🔒 LOCKED TO THIS CONTROLLER
+                thumbColor: themeColor.withOpacity(0.5),
+                radius: const Radius.circular(20),
+                thickness: 4,
+                thumbVisibility: true, // 👀 Visible again!
+                child: SingleChildScrollView(
+                  controller: _detailScrollController, // 🔒 LOCKED TO THIS CONTROLLER
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Column(
+                    children: [
+                      if (isCpu || isGpu)
+                        _buildActionTile(
+                          title: "Performance Analysis",
+                          subtitle: isCpu ? "Gaming & Workstation Scores" : "3DMark Benchmark Power",
+                          color: isCpu ? neonCyan : neonRed,
+                          onTap: () => setState(() => _showPerformanceStats = true),
+                        ),
+
+                      if (isCpu) ...[
+                          _buildSpecRow(FontAwesomeIcons.microchip, "Brand", _previewCpu!.brand, themeColor),
+                          _buildSpecRow(FontAwesomeIcons.gaugeHigh, "Base Clock", "${_previewCpu!.baseClock} GHz", themeColor),
+                          _buildSpecRow(FontAwesomeIcons.microchip, "Cores", "${_previewCpu!.coreCount}", themeColor),
+                          _buildSpecRow(Icons.layers, "Threads", "${_previewCpu!.threads}", themeColor),
+                          _buildSpecRow(Icons.memory, "Socket", _previewCpu!.socket, themeColor),
+                          _buildSpecRow(Icons.graphic_eq, "Graphics", _previewCpu!.integratedGraphics, themeColor),
+                          _buildSpecRow(Icons.thermostat, "TDP", "${_previewCpu!.tdp}W", themeColor),
+                      ] else if (isMobo) ...[
+                          _buildSpecRow(Icons.memory, "Socket", _previewMotherboard!.socket, themeColor),
+                          _buildSpecRow(Icons.aspect_ratio, "Form Factor", _previewMotherboard!.formFactor, themeColor),
+                          _buildSpecRow(Icons.developer_board, "Memory", _previewMotherboard!.memoryType, themeColor),
+                          _buildSpecRow(Icons.sd_storage, "Max RAM", "${_previewMotherboard!.maxRam} GB", themeColor),
+                          _buildSpecRow(Icons.radar, "RAM Slots", "${_previewMotherboard!.memorySlots} Slots", themeColor),
+                          _buildSpecRow(Icons.wifi, "WiFi", _previewMotherboard!.hasWifi ? _previewMotherboard!.wifiVersion ?? "WiFi 6" : "No", themeColor),
+                          _buildSpecRow(Icons.save, "M.2 Slots", "${_previewMotherboard!.m2Slots}", themeColor),
+                          _buildSpecRow(Icons.speed, "PCIe Gen", "Gen ${_previewMotherboard!.pcieGen}", themeColor),
+                      ] else if (isRam) ...[
+                          _buildSpecRow(Icons.storage, "Type", _previewRam!.type, themeColor),
+                          _buildSpecRow(Icons.speed, "Speed", "${_previewRam!.speed} MHz", themeColor),
+                          _buildSpecRow(Icons.data_usage, "Capacity", "${_previewRam!.capacity} GB", themeColor),
+                          _buildSpecRow(Icons.view_module, "Modules", "${_previewRam!.modules} Sticks", themeColor),
+                          _buildSpecRow(Icons.color_lens, "Style", _previewRam!.color, themeColor),
+                      ] else if (isGpu) ...[
+                          _buildSpecRow(Icons.videogame_asset, "VRAM", "${_previewGpu!.vram} GB", themeColor),
+                          _buildSpecRow(Icons.memory, "Type", _previewGpu!.memoryType, themeColor),
+                          _buildSpecRow(Icons.grid_4x4, "Cores", "${_previewGpu!.cores}", themeColor),
+                          _buildSpecRow(Icons.compare_arrows, "Bus Width", "${_previewGpu!.busWidth}-bit", themeColor),
+                          _buildSpecRow(Icons.speed, "PCIe Gen", "Gen ${_previewGpu!.pcieGen}", themeColor),
+                          _buildSpecRow(Icons.speed, "Clock", "${_previewGpu!.clock} MHz", themeColor),
+                          _buildSpecRow(Icons.speed, "FrameGen", "${_previewGpu!.upscaling}", themeColor),
+                          _buildSpecRow(Icons.bolt, "TDP", "${_previewGpu!.tdp} W", themeColor),
+                      ] else if (isStorage) ...[
+                          _buildSpecRow(Icons.type_specimen, "Type", _previewStorage!.type, themeColor),
+                          _buildSpecRow(Icons.folder_zip, "Format", _previewStorage!.format, themeColor),
+                          _buildSpecRow(Icons.storage, "Capacity", "${_previewStorage!.capacity} GB", themeColor),
+                          _buildSpecRow(Icons.download, "Read Speed", "${_previewStorage!.readSpeed} MB/s", themeColor),
+                          _buildSpecRow(Icons.upload, "Write Speed", "${_previewStorage!.writeSpeed} MB/s", themeColor),
+                          _buildSpecRow(Icons.speed, "PCIe Gen", _previewStorage!.pcieGen == 0 ? "SATA" : "Gen ${_previewStorage!.pcieGen}", themeColor),
+                      ] else if (isPsu) ...[
+                          _buildSpecRow(Icons.bolt, "Wattage", "${_previewPsu!.wattage} W", themeColor),
+                          _buildSpecRow(Icons.high_quality, "Efficiency", _previewPsu!.efficiency, themeColor),
+                          _buildSpecRow(Icons.settings_input_component, "Modular", _previewPsu!.isModular ? "Fully Modular" : "Fixed Cables", themeColor),
+                          _buildSpecRow(Icons.branding_watermark, "Brand", _previewPsu!.brand, themeColor),
+                      ] else if (isCooler) ...[ 
+                          _buildSpecRow(Icons.mode_fan_off, "Type", _previewCooler!.type, themeColor),
+                          _buildSpecRow(Icons.cyclone, "Fan Count", "${_previewCooler!.fanCount}", themeColor),
+                          _buildSpecRow(Icons.aspect_ratio, "Fan Size", "${_previewCooler!.fanSize}mm", themeColor),
+                          _buildSpecRow(Icons.memory, "Sockets", _previewCooler!.supportedSockets.join(", "), themeColor),
+                          _buildSpecRow(Icons.thermostat, "Cooling Power", "${_previewCooler!.computedTdp}W", themeColor),
+                          _buildSpecRow(Icons.lightbulb, "RGB", _previewCooler!.hasRGB ? "Yes" : "No", themeColor),
+                      ],
+
+                      const SizedBox(height: 30),
+
+                      // --- EQUIP BUTTON ---
+                      GestureDetector(
+                        onTap: () {
+                          if (!isCompatible && !isEquipped) {
+                            HapticFeedback.vibrate();
+                            return; 
+                          }
+                          if (isCpu) _equipComponent(isEquipped ? null : _previewCpu);
+                          else if (isMobo) _equipMotherboard(isEquipped ? null : _previewMotherboard);
+                          else if (isRam) setState(() => _equippedRam = isEquipped ? null : _previewRam);
+                          else if (isGpu) setState(() => _equippedGpu = isEquipped ? null : _previewGpu);
+                          else if (isStorage) setState(() => _equippedStorage = isEquipped ? null : _previewStorage);
+                          else if (isPsu) setState(() => _equippedPsu = isEquipped ? null : _previewPsu);
+                          else if (isCooler) setState(() => _equippedCooler = isEquipped ? null : _previewCooler);
+                        },
+                        child: Opacity(
+                          opacity: (isCompatible || isEquipped) ? 1.0 : 0.5,
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: buttonActiveColor.withOpacity(0.1), 
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: buttonActiveColor, width: 1.5),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  isEquipped ? Icons.delete_outline : (isCompatible ? Icons.build_circle_outlined : Icons.block), 
+                                  color: buttonActiveColor, 
+                                  size: 20
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  isEquipped ? "REMOVE COMPONENT" : (isCompatible ? "EQUIP COMPONENT" : "INCOMPATIBLE"),
+                                  style: GoogleFonts.orbitron(
+                                    color: (isCompatible || isEquipped) ? Colors.white : Colors.white38, 
+                                    fontSize: 13, 
+                                    fontWeight: FontWeight.bold
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ),
+          ),
+        ],
+      ),
+    );
+  }
 
   // ✅ FIX 3: LOGIC - Don't close menu, just update state
   void _equipComponent(Cpu? component) {
@@ -1824,7 +1914,6 @@ Widget _buildDiagnosticCard(String title, String val, double progress, Color col
 
 void _handlePowerButton() {
     // 1. CALL THE MASTER FUNCTION
-    // No logic here, just pass the variables.
     final result = BootLogic.runBootSequence(
       cpu: _equippedCpu,
       gpu: _equippedGpu,
@@ -1835,56 +1924,106 @@ void _handlePowerButton() {
       cooler: _equippedCooler,
     );
 
-    // 2. HANDLE THE UI RESPONSE
-    switch (result.status) {
-      case BootStatus.incomplete:
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.message),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 3),
+   // 2. STOP THE BOOT IF INCOMPLETE 
+    if (result.status == BootStatus.incomplete) {
+      // ✅ We swapped the SnackBar for our custom centered Dialog
+      _showIncompleteDialog(result.title, result.message);
+      return; // Stop here, don't navigate!
+    }
+
+    // 3. LAUNCH THE VIDEO SCREEN
+    // 3. LAUNCH THE VIDEO SCREEN
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BootSequenceScreen(
+          bootResult: result, 
+          cpu: _equippedCpu,
+          gpu: _equippedGpu,
+          mobo: _equippedMotherboard,
+          ram: _equippedRam,
+          psu: _equippedPsu,
+          storage: _equippedStorage,
+          cooler: _equippedCooler,
+        ),
+      ),
+    ).then((_) {
+      // ✅ REFRESH THE WALLPAPER AS SOON AS THEY RETURN TO THE SIMULATOR
+      _loadWallpaper();
+    });
+  }
+
+// --- Helper: Centered Incomplete Build Dialog ---
+  void _showIncompleteDialog(String title, String message) {
+    showDialog(
+      context: context,
+      // This darkens the background but keeps the simulator fully visible behind it
+      barrierColor: Colors.black.withOpacity(0.6), 
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent, // We are drawing our own box
+        elevation: 0,
+        child: Container(
+          width: 320, // Keeps it small and compact
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.black, // Solid black center
+            border: Border.all(color: neonRed, width: 1.5), // Matches your error theme
+            boxShadow: [
+              BoxShadow(color: neonRed.withOpacity(0.15), blurRadius: 20)
+            ],
           ),
-        );
-        break;
-
-      case BootStatus.psuExplosion:
-        _showCrashDialog("💥 EXPLOSION DETECTED", result.message, Colors.red);
-        // Play sound here
-        break;
-
-      case BootStatus.noDisplay:
-        _showCrashDialog("⚫ NO DISPLAY", result.message, Colors.grey);
-        break;
-
-      case BootStatus.bottleneckWarning:
-        _showWarningDialog(result.title, result.message);
-        break;
-
-      case BootStatus.success:
-        ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text("✅ ${result.message}"), backgroundColor: Colors.green),
-        );
-
-        // 🚀 NAVIGATION LOGIC
-        Future.delayed(const Duration(seconds: 2), () { 
-          Navigator.push(
-            context, 
-            MaterialPageRoute(builder: (context) => OsScreen(
-              // We use '!' because BootLogic checked they are not null
-              cpu: _equippedCpu!,
-              gpu: _equippedGpu, 
-              ram: _equippedRam!,
-              mobo: _equippedMotherboard!,
-              psu: _equippedPsu!,
-              storage: _equippedStorage!,
-              cooler: _equippedCooler!,
-            ))
-          );
-        });
-        break;
-
-    }}
-
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // Hugs the content tightly
+            children: [
+              // HEADER
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.build_circle_outlined, color: neonRed, size: 22),
+                  const SizedBox(width: 10),
+                  Text(
+                    title.toUpperCase(),
+                    style: GoogleFonts.shareTechMono(color: neonRed, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Divider(color: Colors.white24, height: 1),
+              ),
+              
+              // MESSAGE
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.shareTechMono(color: Colors.white70, fontSize: 13, height: 1.5),
+              ),
+              
+              const SizedBox(height: 25),
+              
+              // RETURN BUTTON
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: double.infinity,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: neonRed.withOpacity(0.08),
+                    border: Border.all(color: neonRed.withOpacity(0.5)),
+                  ),
+                  child: Text(
+                    "RESUME BUILD",
+                    style: GoogleFonts.shareTechMono(color: Colors.white, fontSize: 14, letterSpacing: 2, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
   // --- Helper 1: Crash/Error Dialog ---
   void _showCrashDialog(String title, String msg, Color color) {
     showDialog(

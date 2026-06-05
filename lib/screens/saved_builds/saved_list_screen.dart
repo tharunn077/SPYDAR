@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spydar/screens/simulator/simulator_screen.dart';
 import 'dart:convert';
+import '../simulator/widgets/glitters.dart';
 
 class SavedBuildsScreen extends StatefulWidget {
   final bool isSelectionMode; 
@@ -56,34 +57,57 @@ class _SavedBuildsScreenState extends State<SavedBuildsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF050505),
-      appBar: AppBar(
+     appBar: AppBar(
         backgroundColor: Colors.black,
+        // ✅ ADD THIS LEADING SECTION
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 10), // Move slightly to the left
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back, size: 28), // Increased size (default is 24)
+            color: Colors.grey,
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
         title: Text(
-          widget.isSelectionMode ? "SELECT BLUEPRINT" : "THE GARAGE", 
-          // ✅ USE THEME COLOR
-          style: GoogleFonts.orbitron(color: widget.themeColor, letterSpacing: 2, fontWeight: FontWeight.bold)
+          widget.isSelectionMode ? "SELECT BLUEPRINT" : "THE VAULT", 
+          style: GoogleFonts.orbitron(
+            color: widget.themeColor, 
+            letterSpacing: 2, 
+            fontWeight: FontWeight.bold,
+            fontSize: 18, // Slightly smaller to make room for larger button if needed
+          )
         ),
         centerTitle: true,
-        // ✅ USE THEME COLOR FOR BACK BUTTON
-        iconTheme: IconThemeData(color: widget.themeColor), 
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(color: widget.themeColor.withOpacity(0.3), height: 1),
         ),
       ),
-      body: _isLoading 
-          ? Center(child: CircularProgressIndicator(color: widget.themeColor))
-          : _savedBuilds.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: _savedBuilds.length,
-                  itemBuilder: (context, index) {
-                    final build = _savedBuilds[index];
-                    return _buildRigCard(build, index);
-                  },
-                ),
+     body: Stack(
+        children: [
+          // 1. THE GLITTERS LAYER (Stays in the background)
+          const Positioned.fill(
+            child: CyberGlitters(), // Make sure this matches the class name in your glitters.dart file
+          ),
+          
+          // 2. THE CONTENT LAYER (Sits on top of the glitters)
+          Positioned.fill(
+            child: _isLoading 
+                ? Center(child: CircularProgressIndicator(color: widget.themeColor))
+                : _savedBuilds.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(20),
+                        itemCount: _savedBuilds.length,
+                        itemBuilder: (context, index) {
+                          final build = _savedBuilds[index];
+                          return _buildRigCard(build, index);
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 

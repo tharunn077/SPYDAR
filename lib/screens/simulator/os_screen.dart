@@ -4,30 +4,32 @@ import 'dart:ui';
 import 'dart:async'; 
 import '../../../models/component_model.dart';
 import '../benchmark/benchmark_screen.dart';
-import 'dart:convert'; // For JSON
-import 'package:shared_preferences/shared_preferences.dart'; // For Saving
-import '../saved_builds/saved_list_screen.dart'; // Link to the Garage Screen
-import 'dart:math'; // <--- Add this line
-import '../apps/labs_screen.dart'; // Make sure path is correct
+import 'dart:convert'; 
+import 'package:shared_preferences/shared_preferences.dart'; 
+import '../saved_builds/saved_list_screen.dart'; 
+import 'dart:math'; 
+import '../apps/labs_screen.dart'; 
+import '../games/maps.dart'; 
 
 class OsScreen extends StatefulWidget {
-  final Cpu cpu;
+  // ✅ 1. ALL COMPONENTS ARE NOW OPTIONAL (NULLABLE)
+  final Cpu? cpu;
   final Gpu? gpu;
-  final Ram ram;
-  final Motherboard mobo;
-  final Psu psu;
-  final Storage storage;
-  final Cooler cooler;
+  final Ram? ram;
+  final Motherboard? mobo;
+  final Psu? psu;
+  final Storage? storage;
+  final Cooler? cooler;
 
   const OsScreen({
     super.key,
-    required this.cpu,
-    required this.gpu,
-    required this.ram,
-    required this.mobo,
-    required this.psu,
-    required this.storage,
-    required this.cooler,
+    this.cpu,
+    this.gpu,
+    this.ram,
+    this.mobo,
+    this.psu,
+    this.storage,
+    this.cooler,
   });
 
   @override
@@ -42,16 +44,33 @@ class _OsScreenState extends State<OsScreen> {
   String? _activeWindow; 
   bool _isStartMenuOpen = false;
   String _currentWallpaper = 'assets/web.png'; 
-  final List<String> _wallpapers = ['assets/web.png', 'assets/grid.png', 'assets/city.png'];
+  
+  // ✅ FIX 1: Swapped the 2nd slot to be your new Doc Ock background
+  final List<String> _wallpapers = ['assets/web.png', 'assets/doc_ock_bg.png', 'assets/city.png'];
 
   late Timer _timer;
   String _timeString = "12:00 PM"; 
+  
+  // ✅ FIX 2: State variable to track the unlock
+  bool _isDocOckUnlocked = false;
+
+  bool get _hasBuild => widget.cpu != null;
 
   @override
   void initState() {
     super.initState();
     _updateTime(); 
     _timer = Timer.periodic(const Duration(seconds: 1), (Timer t) => _updateTime());
+    _loadUnlocks(); // ✅ FIX 3: Run the check when OS boots
+  }
+
+  Future<void> _loadUnlocks() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isDocOckUnlocked = prefs.getBool('doc_ock_unlocked') ?? false;
+      // Loads the saved wallpaper, defaults to web.png if it's their first time playing
+      _currentWallpaper = prefs.getString('saved_wallpaper') ?? 'assets/web.png'; 
+    });
   }
 
   @override
@@ -71,11 +90,69 @@ class _OsScreenState extends State<OsScreen> {
     });
   }
 
-  double get totalCost => widget.cpu.price + (widget.gpu?.price ?? 0) + widget.ram.price + widget.mobo.price + widget.psu.price + widget.storage.price + widget.cooler.price;
-Future<void> _showSaveDialog() async {
+  // ✅ 3. SAFE COST CALCULATION
+  double get totalCost => 
+      (widget.cpu?.price ?? 0) + 
+      (widget.gpu?.price ?? 0) + 
+      (widget.ram?.price ?? 0) + 
+      (widget.mobo?.price ?? 0) + 
+      (widget.psu?.price ?? 0) + 
+      (widget.storage?.price ?? 0) + 
+      (widget.cooler?.price ?? 0);
+
+  // ✅ 4. THE EMPTY STATE WARNING DIALOG
+  void _showEmptyWarning() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A0A0A),
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: neonRed, width: 2), 
+          borderRadius: BorderRadius.circular(10)
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: neonRed), 
+            const SizedBox(width: 7), 
+            Text("SYSTEM EMPTY", style: GoogleFonts.orbitron(color: neonRed, fontWeight: FontWeight.bold))
+          ]
+        ),
+        content: Text(
+          "Hardware components not detected.\n\nPlease start a 'New Simulation' or load a blueprint from the Vault to access this module.", 
+          style: GoogleFonts.shareTechMono(color: Colors.white70)
+        ),
+        // 👇 REPLACED THIS SECTION:
+       actions: [
+          GestureDetector(
+            onTap: () => Navigator.pop(ctx),
+            child: Container(
+              // ✅ Increased horizontal padding from 16 to 36 to make it longer
+              // ✅ Increased vertical padding from 8 to 10 for better proportions
+              padding: const EdgeInsets.symmetric(horizontal: 45, vertical: 20), 
+              margin: const EdgeInsets.only(bottom: 5, right: 5),
+              decoration: BoxDecoration(
+                color: neonCyan.withOpacity(0.1), // Faint neon fill
+                border: Border.all(color: neonCyan.withOpacity(0.8), width: 1), // Minimal crisp border
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: [
+                  BoxShadow(color: neonCyan.withOpacity(0.2), blurRadius: 8) // Subtle glow
+                ],
+              ),
+              child: Text(
+                "ACKNOWLEDGE", 
+                style: GoogleFonts.orbitron(color: neonCyan, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1),
+              ),
+            ),
+          )
+
+        ],
+      )
+    );
+  }
+
+  Future<void> _showSaveDialog() async {
     TextEditingController nameController = TextEditingController();
     
-    // --- LOGIC: GENERATE "PC 1, PC 2..." ---
     final prefs = await SharedPreferences.getInstance();
     String? existingData = prefs.getString('saved_rigs');
     List<dynamic> currentList = existingData != null ? json.decode(existingData) : [];
@@ -86,14 +163,14 @@ Future<void> _showSaveDialog() async {
 
     showDialog(
       context: context,
-      barrierDismissible: false, // User must click Abort or Authorize
+      barrierDismissible: false,
       builder: (context) {
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
           child: Dialog(
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.all(20),
-            child: SingleChildScrollView( // Prevents keyboard overflow error
+            child: SingleChildScrollView( 
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -106,7 +183,6 @@ Future<void> _showSaveDialog() async {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // --- HEADER ---
                     Row(
                       children: [
                         GestureDetector(
@@ -115,24 +191,19 @@ Future<void> _showSaveDialog() async {
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          "NEXUS UPLOAD", 
+                          "RIG UPLOAD", 
                           style: GoogleFonts.orbitron(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
                         ),
                       ],
                     ),
-                    
                     const SizedBox(height: 10),
                     Text(
                       "Assign a Node ID to anchor rig.", 
                       style: GoogleFonts.shareTechMono(color: Colors.white54, fontSize: 12)
                     ),
-                    
                     const SizedBox(height: 25),
-
-                    // --- INPUT FIELD (FIXED) ---
                     TextField(
                       controller: nameController,
-                      // NO AUTOFOCUS - Keyboard waits for you
                       autofocus: false, 
                       style: GoogleFonts.orbitron(color: Colors.white, fontSize: 20, letterSpacing: 1.5),
                       cursorColor: neonCyan,
@@ -148,23 +219,16 @@ Future<void> _showSaveDialog() async {
                         hintStyle: GoogleFonts.shareTechMono(color: Colors.white24),
                       ),
                     ),
-
                     const SizedBox(height: 30),
-
-                    // --- BUTTONS ---
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        // NEON RED ABORT
                         TextButton(
                           onPressed: () => Navigator.pop(context), 
                           style: TextButton.styleFrom(foregroundColor: neonRed),
                           child: Text("ABORT", style: GoogleFonts.shareTechMono(fontSize: 14, fontWeight: FontWeight.bold)),
                         ),
-                        
                         const SizedBox(width: 15),
-                        
-                        // AUTHORIZE BUTTON
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: neonCyan.withOpacity(0.1), 
@@ -189,31 +253,29 @@ Future<void> _showSaveDialog() async {
       },
     );
   }
-  // --- 2. THE ACTUAL SAVE LOGIC ---
+
   Future<void> _saveToStorage(String name) async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Create the Build Object
     Map<String, dynamic> newBuild = {
       'name': name,
       'date': "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}",
-      'cpu': widget.cpu.name,
+      'cpu': widget.cpu!.name,
       'gpu': widget.gpu?.name ?? "Integrated",
-      'ram': widget.ram.name,
-      'cooler': widget.cooler.name,
-      'psu': widget.psu.name,
+      'ram': widget.ram!.name,
+      'cooler': widget.cooler!.name,
+      'psu': widget.psu!.name,
       'cost': totalCost.toStringAsFixed(0),
+      'mobo': widget.mobo!.name,
+      'storage': widget.storage!.name,
     };
 
-    // Get Existing list
     String? existingData = prefs.getString('saved_rigs');
     List<dynamic> buildList = existingData != null ? json.decode(existingData) : [];
     
-    // Add new and Save
     buildList.add(newBuild);
     await prefs.setString('saved_rigs', json.encode(buildList));
 
-    // Show Success Message
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: Colors.black, content: Text("BLUEPRINT '$name' ENCRYPTED.", style: GoogleFonts.shareTechMono(color: neonCyan))));
   }
   
@@ -227,74 +289,99 @@ Future<void> _showSaveDialog() async {
         },
         child: Stack(
           children: [
-            // 1. WALLPAPER (Always visible in background)
+            // 1. WALLPAPER
             Positioned.fill(
-              child: Image.asset(_currentWallpaper, fit: BoxFit.cover, errorBuilder: (c, o, s) => Container(color: Colors.black)),
+              child: Opacity(
+                opacity: 0.8, // ✅ Change this! 0.0 is invisible, 1.0 is full brightness
+                child: Image.asset(
+                  _currentWallpaper, 
+                  fit: BoxFit.cover, 
+                  errorBuilder: (c, o, s) => Container(color: Colors.black)
+                ),
+              ),
             ),
 
-            // 2. DESKTOP ICONS (Only visible if NO window is open)
+            // 2. DESKTOP ICONS
             if (_activeWindow == null)
               Positioned(
                 top: 30, left: 20, bottom: 60, 
                 child: Row(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Column(
-      children: [
-        _buildDesktopIcon(Icons.computer, "My Rig", () => _openWindow('specs'), color: neonCyan),
-        const SizedBox(height: 15),
-        _buildDesktopIcon(Icons.speed, "Benchmark", () => _openWindow('benchmark'), color: neonRed),
-        const SizedBox(height: 15),
-        
-        // NEW: GARAGE ICON
-        _buildDesktopIcon(Icons.garage, "Garage", () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedBuildsScreen()));
-        }, color: Colors.purpleAccent),
-        
-      ],
-    ),
-    const SizedBox(width: 15), 
-    Column(
-      children: [
-        
-        // UPDATED: SAVE ICON NOW CALLS THE DIALOG
-        _buildDesktopIcon(Icons.save, "Save Build", _showSaveDialog, color: neonCyan), 
-        const SizedBox(height: 15),
-        _buildDesktopIcon(Icons.science, "Labs", () {
-  Navigator.push(context, MaterialPageRoute(builder: (context) => const LabsScreen()));
-}, color: Colors.greenAccent),
-      ],
-    ),
-  ],
-),),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Column(
+                      children: [
+                        // ✅ 5. PROTECTED APP ICONS
+                        _buildDesktopIcon(Icons.computer, "My Rig", () {
+                          if (!_hasBuild) { _showEmptyWarning(); return; }
+                          _openWindow('specs');
+                        }, color: neonCyan),
+                        
+                        const SizedBox(height: 15),
+                        
+                        _buildDesktopIcon(Icons.speed, "SpydarMark", () {
+                          if (!_hasBuild) { _showEmptyWarning(); return; }
+                          _openWindow('benchmark');
+                        }, color: neonRed),
+                        
+                        const SizedBox(height: 15),
+                        
+                        // Garage stays accessible so they can look at old builds!
+                        _buildDesktopIcon(Icons.lock_clock_outlined, "Vault", () {
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedBuildsScreen()));
+                        }, color: Colors.purpleAccent),
+                        
+                      ],
+                    ),
+                    const SizedBox(width: 15), 
+                    Column(
+                      children: [
+                        _buildDesktopIcon(Icons.save, "Save Build", () {
+                          if (!_hasBuild) { _showEmptyWarning(); return; }
+                          _showSaveDialog();
+                        }, color: neonCyan), 
+                        
+                        const SizedBox(height: 15),
+                        
+                        _buildDesktopIcon(Icons.science, "Labs", () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const LabsScreen()));
+                        }, color: Colors.greenAccent),
 
-            // 3. MAXIMIZED WINDOW (Fills screen up to taskbar)
+                        const SizedBox(height: 15), 
+                        
+                        _buildDesktopIcon(Icons.gamepad, "Games", () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const MapSelectionScreen()));
+                        }, color: Colors.orangeAccent),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+            // 3. MAXIMIZED WINDOW
             if (_activeWindow != null)
               Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 50, // Leave space for taskbar
+                top: 0, left: 0, right: 0, bottom: 50, 
                 child: _buildMaximizedWindow(
-                  title: _activeWindow == 'specs' ? "SYSTEM SPECIFICATIONS" : "PERFORMANCE BENCHMARK",
+                  title: _activeWindow == 'specs' ? "                          SYSTEM SPECIFICATIONS" : "                        PERFORMANCE BENCHMARK",
                   themeColor: _activeWindow == 'specs' ? neonCyan : neonRed,
                   
-                  // <--- UPDATED SECTION STARTS HERE --->
+                  // ✅ 6. FORCED NOT-NULL (!) BECAUSE WE BLOCKED EMPTY ACCESS ABOVE
                   content: _activeWindow == 'specs' 
                       ? _buildSpecsContent() 
-                      : BenchmarkScreen( // Now correctly calls your new external file
-                          cpu: widget.cpu,
+                      : BenchmarkScreen( 
+                          cpu: widget.cpu!,
                           gpu: widget.gpu,
-                          ram: widget.ram,
-                          storage: widget.storage,
-                        ),),
+                          ram: widget.ram!,
+                          storage: widget.storage!,
+                        ),
+                ),
               ),
 
             // 4. START MENU
             if (_isStartMenuOpen)
               Positioned(bottom: 55, left: 0, child: _buildStartMenu()),
 
-            // 5. TASKBAR (Always on top)
+            // 5. TASKBAR
             Positioned(bottom: 0, left: 0, right: 0, child: _buildTaskbar()),
           ],
         ),
@@ -302,58 +389,56 @@ Future<void> _showSaveDialog() async {
     );
   }
 
-  // --- WIDGETS ---
-
-  Widget _buildMaximizedWindow({required String title, required Color themeColor, required Widget content}) {
+ Widget _buildMaximizedWindow({required String title, required Color themeColor, required Widget content}) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF050505),
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(12),  // Rounded Top Corners
+          topLeft: Radius.circular(12),
           topRight: Radius.circular(12),
         ),
         boxShadow: [
           BoxShadow(color: themeColor.withOpacity(0.1), blurRadius: 20, spreadRadius: 2)
         ],
         image: const DecorationImage(
-          image: AssetImage('assets/grid.png'), // If you have it, else remove
+          image: AssetImage('assets/grid.png'), 
           fit: BoxFit.cover,
           opacity: 0.1,
         ),
       ),
       child: Column(
         children: [
-          // APP TITLE BAR (Now Rounded at top)
           Container(
             height: 50,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            // Reduced horizontal padding slightly to account for the IconButton's built-in padding
+            padding: const EdgeInsets.symmetric(horizontal: 10), 
             decoration: BoxDecoration(
               color: themeColor.withOpacity(0.1),
-              borderRadius: const BorderRadius.only( // Match the container
+              borderRadius: const BorderRadius.only( 
                 topLeft: Radius.circular(12),
                 topRight: Radius.circular(12),
               ),
               border: Border(bottom: BorderSide(color: themeColor.withOpacity(0.3))),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.start, // Align everything to the left
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.hub, color: themeColor, size: 20),
-                    const SizedBox(width: 15),
-                    Text(title, style: GoogleFonts.orbitron(color: themeColor, fontSize: 16, letterSpacing: 3, fontWeight: FontWeight.bold)),
-                  ],
-                ),
+                // 1. BACK BUTTON ON THE LEFT
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white54, size: 24),
-                  onPressed: _closeWindow,
+                  icon: const Icon(Icons.arrow_back, color: Colors.white54, size: 24),
+                  onPressed: _closeWindow, // Closes the active window to return to desktop
+                ),
+                const SizedBox(width: 5), // Small gap
+                
+                // 2. TITLE (No extra icon)
+                Text(
+                  title, 
+                  style: GoogleFonts.orbitron(color: themeColor, fontSize: 16, letterSpacing: 3, fontWeight: FontWeight.bold)
                 ),
               ],
             ),
           ),
           
-          // CONTENT AREA
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(30),
@@ -365,16 +450,14 @@ Future<void> _showSaveDialog() async {
     );
   }
 
- // --- SPECS CONTENT (Fixed Layout & Blue Power Meter) ---
   Widget _buildSpecsContent() {
-    // 1. Calculate Rank
     String rankName = "ENTRY LEVEL";
     Color rankColor = Colors.grey;
     IconData rankIcon = Icons.circle_outlined;
     
     if (totalCost > 150000) {
       rankName = "GOD TIER";
-      rankColor = const Color(0xFFFFD700); // Gold
+      rankColor = const Color.fromARGB(255, 236, 8, 8); 
       rankIcon = Icons.workspace_premium;
     } else if (totalCost > 80000) {
       rankName = "HIGH-PERFORMANCE";
@@ -386,47 +469,44 @@ Future<void> _showSaveDialog() async {
       rankIcon = Icons.shield;
     }
 
-    // 2. Estimate Power (Fake logic)
-    int psuWattage = widget.psu.wattage;
+    // ✅ Safe default for Wattage
+    int psuWattage = widget.psu?.wattage ?? 0;
     int estimatedLoad = (psuWattage * 0.75).toInt(); 
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // LEFT COLUMN: Component List (Expanded to take available space)
         Expanded(
           flex: 3,
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              _buildProSpecRow(Icons.memory, "CPU PROCESSOR", "${widget.cpu.name} @ ${widget.cpu.baseClock}GHz"),
+              _buildProSpecRow(Icons.memory, "CPU PROCESSOR", "${widget.cpu!.name} @ ${widget.cpu!.baseClock}GHz"),
               const SizedBox(height: 8),
-              _buildProSpecRow(Icons.developer_board, "MOTHERBOARD", widget.mobo.name),
+              _buildProSpecRow(Icons.developer_board, "MOTHERBOARD", widget.mobo!.name),
               const SizedBox(height: 8),
-              _buildProSpecRow(Icons.storage, "MEMORY (RAM)", widget.ram.name),
+              _buildProSpecRow(Icons.storage, "MEMORY (RAM)", widget.ram!.name),
               const SizedBox(height: 8),
               _buildProSpecRow(Icons.videogame_asset, "GRAPHICS", widget.gpu != null ? "${widget.gpu!.name} (${widget.gpu!.vram}GB)" : "Integrated Graphics"),
               const SizedBox(height: 8),
-              _buildProSpecRow(Icons.save, "STORAGE DRIVE", widget.storage.name),
+              _buildProSpecRow(Icons.save, "STORAGE DRIVE", widget.storage!.name),
               const SizedBox(height: 8),
-              _buildProSpecRow(Icons.ac_unit, "COOLING", widget.cooler.name),
+              _buildProSpecRow(Icons.ac_unit, "COOLING", widget.cooler!.name),
               const SizedBox(height: 8),
-              _buildProSpecRow(Icons.power, "POWER SUPPLY", "${widget.psu.name} (${widget.psu.wattage}W)"),
+              _buildProSpecRow(Icons.power, "POWER SUPPLY", "${widget.psu!.name} (${widget.psu!.wattage}W)"),
             ],
           ),
         ),
         
         const SizedBox(width: 20), 
 
-        // RIGHT COLUMN: Dashboard (Fixed spacing to prevent overflow)
         Expanded(
           flex: 2,
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.start, // Align to top
+            mainAxisAlignment: MainAxisAlignment.start, 
             children: [
-              // MODULE 1: SYSTEM RANK
               Container(
-                padding: const EdgeInsets.all(12), // Reduced padding slightly
+                padding: const EdgeInsets.all(12), 
                 decoration: BoxDecoration(
                   color: rankColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -447,15 +527,14 @@ Future<void> _showSaveDialog() async {
                 ),
               ),
 
-              const SizedBox(height: 12), // Fixed gap
+              const SizedBox(height: 12), 
 
-              // MODULE 2: POWER METER (Now Neon Blue Filled)
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: neonCyan.withOpacity(0.1), // <--- CYAN FILL
+                  color: neonCyan.withOpacity(0.1), 
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: neonCyan.withOpacity(0.5)), // <--- CYAN BORDER
+                  border: Border.all(color: neonCyan.withOpacity(0.5)), 
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,7 +552,7 @@ Future<void> _showSaveDialog() async {
                       child: LinearProgressIndicator(
                         value: 0.75,
                         backgroundColor: Colors.black,
-                        color: neonCyan, // Cyan Bar
+                        color: neonCyan, 
                         minHeight: 6,
                       ),
                     ),
@@ -481,9 +560,8 @@ Future<void> _showSaveDialog() async {
                 ),
               ),
 
-              const SizedBox(height: 12), // Fixed gap
+              const SizedBox(height: 12), 
 
-              // MODULE 3: COMPACT PRICE TAG
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
@@ -605,7 +683,15 @@ Future<void> _showSaveDialog() async {
               const SizedBox(height: 10),
               Text("[ THEME SELECTOR ]", style: GoogleFonts.shareTechMono(color: Colors.white54)),
               const SizedBox(height: 10),
-              Wrap(spacing: 10, children: [_buildWallpaperOption(_wallpapers[0], true), _buildWallpaperOption(_wallpapers[1], true), _buildWallpaperOption(_wallpapers[2], false)]),
+             Wrap(
+                spacing: 10, 
+                children: [
+                  _buildWallpaperOption(_wallpapers[0], true), // Always unlocked
+                  // ✅ FIX 5: Slot 2 is now tied directly to the unlock system!
+                  _buildWallpaperOption(_wallpapers[1], _isDocOckUnlocked), 
+                  _buildWallpaperOption(_wallpapers[2], false) // Still locked
+                ]
+              ),
               const SizedBox(height: 30),
               GestureDetector(onTap: () => Navigator.pop(context), child: Container(height: 45, width: double.infinity, decoration: BoxDecoration(color: neonRed.withOpacity(0.1), border: Border.all(color: neonRed), boxShadow: [BoxShadow(color: neonRed.withOpacity(0.2), blurRadius: 10)]), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.power_settings_new, color: neonRed, size: 20), const SizedBox(width: 10), Text("SHUTDOWN", style: GoogleFonts.orbitron(color: neonRed, fontSize: 14, fontWeight: FontWeight.bold))]))),
             ],
@@ -637,5 +723,10 @@ Future<void> _showSaveDialog() async {
   void _openWindow(String windowName) { setState(() { _activeWindow = windowName; _isStartMenuOpen = false; }); }
   void _closeWindow() { setState(() { _activeWindow = null; }); }
   void _toggleStartMenu() { setState(() { _isStartMenuOpen = !_isStartMenuOpen; }); }
-  void _changeWallpaper(String assetPath) { setState(() { _currentWallpaper = assetPath; }); }
+ void _changeWallpaper(String assetPath) async { 
+    setState(() { _currentWallpaper = assetPath; }); 
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('saved_wallpaper', assetPath);
+  }
 }

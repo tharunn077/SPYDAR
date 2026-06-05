@@ -46,12 +46,12 @@ class _LabsScreenState extends State<LabsScreen> with TickerProviderStateMixin {
     _accelSubscription = accelerometerEvents.listen((AccelerometerEvent event) {
       if (!mounted) return;
 
-      // ✅ FIX: Use 'y' for steering motion when held horizontally.
-      // 0.3 sensitivity for the liquid
-      double newAngle = (event.y * 0.3).clamp(-1.0, 1.0); 
+      // ✅ FIX: Clamped the angle heavily (-0.3 to 0.3) and reduced sensitivity (0.08)
+      // This prevents the liquid from spinning wildly and makes it much smoother.
+      double newAngle = (event.y * 0.1).clamp(-0.6, 0.6); 
       
       setState(() {
-        _tiltAngle = _tiltAngle + (newAngle - _tiltAngle) * 0.2;
+        _tiltAngle = _tiltAngle + (newAngle - _tiltAngle) * 0.1;
       });
     });
   }
@@ -64,11 +64,21 @@ class _LabsScreenState extends State<LabsScreen> with TickerProviderStateMixin {
   }
 
   void _calculateBalance() {
-    if (_buildLeft == null || _buildRight == null) {
+    // ✅ FIX: Handle empty & single-system states perfectly
+    if (_buildLeft == null && _buildRight == null) {
       setState(() => _targetRatio = 0.5);
       return;
     }
+    if (_buildLeft != null && _buildRight == null) {
+      setState(() => _targetRatio = 1.0); // 100% Cyan Liquid
+      return;
+    }
+    if (_buildLeft == null && _buildRight != null) {
+      setState(() => _targetRatio = 0.0); // 100% Red Liquid
+      return;
+    }
 
+    // Both are equipped, calculate the actual ratio
     double scoreL = double.tryParse(_buildLeft!['cost']?.toString() ?? "0") ?? 0;
     double scoreR = double.tryParse(_buildRight!['cost']?.toString() ?? "0") ?? 0;
 
@@ -80,13 +90,13 @@ class _LabsScreenState extends State<LabsScreen> with TickerProviderStateMixin {
 
     setState(() => _targetRatio = ratio);
   }
-Future<void> _selectBuild(bool isLeft) async {
+
+  Future<void> _selectBuild(bool isLeft) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => SavedBuildsScreen(
           isSelectionMode: true,
-          // ✅ PASS THE COLOR HERE
           themeColor: isLeft ? neonCyan : neonRed, 
         ),
       ),
@@ -101,7 +111,6 @@ Future<void> _selectBuild(bool isLeft) async {
     }
   }
 
-  // ✅ HELPER: Find Motherboard Logic
   Motherboard? _findMobo(String? name) {
     if (name == null) return null;
     try {
@@ -125,13 +134,18 @@ Future<void> _selectBuild(bool isLeft) async {
     if (name == null) return null;
     try { return ComponentsDB.gpus.firstWhere((g) => g.name == name); } catch (e) { return null; }
   }
-@override
+
+  @override
   Widget build(BuildContext context) {
     _currentRatio = _currentRatio + (_targetRatio - _currentRatio) * 0.05;
 
-    // Feature: Only animate bubbles if comparison is active
-    bool showBubbles = _buildLeft != null || _buildRight != null;
-    if (showBubbles) {
+    bool hasLeft = _buildLeft != null;
+    bool hasRight = _buildRight != null;
+    bool hasAny = hasLeft || hasRight;
+    bool hasBoth = hasLeft && hasRight;
+
+    // Feature: Only animate bubbles if BOTH systems are equipped
+    if (hasBoth) {
       for (var dot in _dots) dot.update();
     }
 
@@ -153,14 +167,23 @@ Future<void> _selectBuild(bool isLeft) async {
             children: [
               // --- HEADER ---
               Container(
-                height: 50,
-                margin: const EdgeInsets.only(top: 10),
+                margin: const EdgeInsets.only(top: 10, bottom: 10), // Adjusted top margin for notch safety
                 alignment: Alignment.center,
-                child: Text("SPYDAR LABS", 
-                  style: GoogleFonts.orbitron(
-                    color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 4,
-                    shadows: [const Shadow(color: neonCyan, blurRadius: 15)]
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text("SPYDAR LABS", 
+                      style: GoogleFonts.orbitron(
+                        color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 4,
+                        shadows: [const Shadow(color: neonCyan, blurRadius: 15)]
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // ✅ FIX: Subtitle added below header
+                    Text("ADD PC TO COMPARE", 
+                      style: GoogleFonts.shareTechMono(color: Colors.white54, fontSize: 12, letterSpacing: 2)
+                    ),
+                  ],
                 ),
               ),
 
@@ -191,16 +214,16 @@ Future<void> _selectBuild(bool isLeft) async {
 
           // 3. THE FLOATING LOGO
           Positioned(
-            top: 70, 
+            top: 90, 
             bottom: 40,
             child: Center(
-              child: _buildNeonLiquidLogo(showBubbles),
+              child: _buildNeonLiquidLogo(hasAny, hasBoth),
             ),
           ),
 
-          // 4. BACK BUTTON
+          // 4. BACK BUTTON 
           Positioned(
-            top: 15, left: 10,
+            top: 10, left: 10,
             child: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white54, size: 24),
               onPressed: () => Navigator.pop(context),
@@ -258,10 +281,24 @@ Future<void> _selectBuild(bool isLeft) async {
       );
     }
 
-    // --- 1. LOOKUP DATA ---
-    Cpu? realCpu = _findCpu(build['cpu']);
-    Gpu? realGpu = _findGpu(build['gpu']);
-    Motherboard? realMobo = _findMobo(build['mobo']);
+ // --- 1. SAFE DATA EXTRACTION ---
+    String extractName(dynamic item) {
+      if (item == null) return "";
+      if (item is String) return item;
+      if (item is Map) return item['name']?.toString() ?? "";
+      return item.toString();
+    }
+
+    // ✅ THE FIX: We added the exact UI slot key "MOTHER\nBOARD" to the checklist
+    String moboNameRaw = extractName(build['MOTHER\nBOARD'] ?? build['motherboard'] ?? build['mobo']);
+    String cpuNameRaw = extractName(build['cpu'] ?? build['CPU']);
+    String gpuNameRaw = extractName(build['gpu'] ?? build['GPU']);
+    String ramString = extractName(build['ram'] ?? build['RAM']);
+    String storageString = extractName(build['storage'] ?? build['STORAGE']);
+
+    Cpu? realCpu = _findCpu(cpuNameRaw);
+    Gpu? realGpu = _findGpu(gpuNameRaw);
+    Motherboard? realMobo = _findMobo(moboNameRaw);
 
     // --- 2. WI-FI LOGIC ---
     bool hasWifi = false;
@@ -273,16 +310,18 @@ Future<void> _selectBuild(bool isLeft) async {
         wifiText = (realMobo.wifiVersion ?? "WI-FI READY").toUpperCase();
       }
     } else {
-      String moboName = (build['mobo'] ?? "").toUpperCase();
-      if (moboName.contains("WIFI") || moboName.contains("AX") || moboName.contains("AC")) {
+      String upperName = moboNameRaw.toUpperCase();
+      if (upperName.contains("WIFI") || upperName.contains("AX") || upperName.contains("AC")) {
         hasWifi = true;
         wifiText = "WI-FI DETECTED";
       }
+      // 👇 OPTIONAL DEBUG: If it STILL says Ethernet, uncomment this line to see what it's actually reading:
+      wifiText = "KEYS: ${build.keys.join(', ')}";
     }
 
     // --- 3. OTHER STATS ---
-    String ramString = build['ram'] ?? "Unknown RAM";
-    String storageString = build['storage'] ?? "Unknown Storage";
+    if (ramString.isEmpty) ramString = "Unknown RAM";
+    if (storageString.isEmpty) storageString = "Unknown Storage";
     
     int cpuGameScore = realCpu?.gamingScore ?? 0;
     int cpuWorkScore = realCpu?.workstationScore ?? 0;
@@ -291,7 +330,7 @@ Future<void> _selectBuild(bool isLeft) async {
     double clockSpeed = realCpu?.baseClock ?? 0.0;
     String gpuUpscaling = realGpu?.upscaling ?? "N/A"; 
 
-    // --- 4. OPPONENT DATA ---
+   // --- 4. OPPONENT DATA ---
     Map<String, dynamic>? opponent = isLeft ? _buildRight : _buildLeft;
     int oppCpuGameScore = 0;
     int oppCpuWorkScore = 0;
@@ -299,6 +338,7 @@ Future<void> _selectBuild(bool isLeft) async {
     String oppUpscaling = "N/A";
     String oppRamString = "Unknown";
     String oppStorageString = "Unknown";
+    String oppWifiText = "ETHERNET"; // ✅ ADD THIS VARIABLE
 
     if (opponent != null) {
       Cpu? oppCpu = _findCpu(opponent['cpu']);
@@ -309,6 +349,15 @@ Future<void> _selectBuild(bool isLeft) async {
       oppUpscaling = oppGpu?.upscaling ?? "N/A";
       oppRamString = opponent['ram'] ?? "Unknown";
       oppStorageString = opponent['storage'] ?? "Unknown";
+      
+      // ✅ ADD THIS TO GRAB OPPONENT WIFI
+      String oppMoboRaw = extractName(opponent['MOTHER\nBOARD'] ?? opponent['motherboard'] ?? opponent['mobo']);
+      Motherboard? oppMobo = _findMobo(oppMoboRaw);
+      if (oppMobo != null && oppMobo.hasWifi) {
+        oppWifiText = (oppMobo.wifiVersion ?? "WI-FI READY").toUpperCase();
+      } else if (oppMoboRaw.toUpperCase().contains("WIFI") || oppMoboRaw.toUpperCase().contains("AX") || oppMoboRaw.toUpperCase().contains("AC")) {
+        oppWifiText = "WI-FI DETECTED";
+      }
     }
 
     TextAlign alignText = isLeft ? TextAlign.left : TextAlign.right;
@@ -386,7 +435,7 @@ Future<void> _selectBuild(bool isLeft) async {
                 const SizedBox(height: 20),
 
                 _buildSectionHeader("CONNECTIVITY", isLeft),
-                _buildWifiRow(wifiText, hasWifi, color, isLeft),
+               _buildWifiRow(wifiText, oppWifiText, color, isLeft),
 
                 const SizedBox(height: 20),
 
@@ -475,8 +524,26 @@ Future<void> _selectBuild(bool isLeft) async {
     );
   }
 
-  Widget _buildWifiRow(String text, bool hasWifi, Color color, bool isLeft) {
-    Color textColor = hasWifi ? color : Colors.white38;
+ Widget _buildWifiRow(String myWifi, String oppWifi, Color color, bool isLeft) {
+    // Basic scoring system for Wi-Fi generations
+    double getScore(String w) {
+      if (w.contains("7")) return 7.0;
+      if (w.contains("6E")) return 6.5;
+      if (w.contains("6")) return 6.0;
+      if (w.contains("5") || w.contains("AC")) return 5.0;
+      if (w.contains("READY") || w.contains("DETECTED")) return 1.0;
+      return 0.0; // ETHERNET
+    }
+
+    double myScore = getScore(myWifi);
+    double oppScore = getScore(oppWifi);
+    
+    bool isWinner = (myScore > oppScore) && (myScore > 0);
+    bool hasWifi = myScore > 0;
+    
+    Color winColor = isLeft ? neonCyan : neonRed;
+    Color textColor = isWinner ? winColor : (hasWifi ? Colors.white70 : Colors.white38);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -484,7 +551,11 @@ Future<void> _selectBuild(bool isLeft) async {
         children: [
           if (isLeft) Icon(hasWifi ? Icons.wifi : Icons.cable, color: textColor, size: 16),
           const SizedBox(width: 8),
-          Text(text, style: GoogleFonts.orbitron(color: textColor, fontSize: 12)),
+          Text(myWifi, style: GoogleFonts.orbitron(
+            color: textColor, 
+            fontSize: 12,
+            fontWeight: isWinner ? FontWeight.bold : FontWeight.normal
+          )),
           const SizedBox(width: 8),
           if (!isLeft) Icon(hasWifi ? Icons.wifi : Icons.cable, color: textColor, size: 16),
         ],
@@ -635,7 +706,7 @@ Future<void> _selectBuild(bool isLeft) async {
   }
 
   // --- GLOWING LIQUID LOGO ---
-  Widget _buildNeonLiquidLogo(bool showBubbles) {
+  Widget _buildNeonLiquidLogo(bool hasAny, bool hasBoth) {
     return SizedBox(
       width: 140, 
       height: 140,
@@ -644,9 +715,12 @@ Future<void> _selectBuild(bool isLeft) async {
           shape: BoxShape.circle,
           color: Colors.black,
           border: Border.all(color: Colors.white24, width: 2),
-          boxShadow: [
+          // ✅ FIX: No glow if 0 systems equipped
+          boxShadow: hasAny ? [
             BoxShadow(color: neonCyan.withOpacity(_currentRatio * 0.7), blurRadius: 60, spreadRadius: -5),
             BoxShadow(color: neonRed.withOpacity((1-_currentRatio) * 0.7), blurRadius: 60, spreadRadius: -5),
+          ] : [
+            BoxShadow(color: Colors.white.withOpacity(0.05), blurRadius: 40, spreadRadius: -5),
           ]
         ),
         child: ClipOval( 
@@ -664,12 +738,13 @@ Future<void> _selectBuild(bool isLeft) async {
                       colorCyan: neonCyan,
                       colorRed: neonRed,
                       dots: _dots,
-                      showBubbles: showBubbles, // ✅ PASS THE FLAG
+                      hasAny: hasAny,     // ✅ Passed flag
+                      hasBoth: hasBoth,   // ✅ Passed flag
                     ),
                   );
                 },
               ),
-              Center(child: Icon(Icons.bug_report, size: 70, color: Colors.white.withOpacity(0.95))),
+              Center(child: Icon(Icons.bug_report, size: 70, color: Colors.white.withOpacity(hasAny ? 0.95 : 0.4))),
               Positioned(
                 top: 0, left: 0, right: 0, height: 70,
                 child: Container(
@@ -707,8 +782,8 @@ class MicroDot {
 class NeonPhysicsPainter extends CustomPainter {
   final double ratio; final double wavePhase; final double tilt; 
   final Color colorCyan; final Color colorRed; final List<MicroDot> dots;
-  // ✅ FEATURE 2: Added Flag
-  final bool showBubbles;
+  final bool hasAny;
+  final bool hasBoth;
 
   NeonPhysicsPainter({
     required this.ratio, 
@@ -717,11 +792,19 @@ class NeonPhysicsPainter extends CustomPainter {
     required this.colorCyan, 
     required this.colorRed, 
     required this.dots,
-    required this.showBubbles,
+    required this.hasAny,
+    required this.hasBoth,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // ✅ FIX: If empty, draw dark grey void and stop
+    if (!hasAny) {
+      Paint greyPaint = Paint()..color = Colors.white.withOpacity(0.05);
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), greyPaint);
+      return; 
+    }
+
     // 1. RED (Background)
     Paint redPaint = Paint()
       ..shader = RadialGradient(
@@ -759,8 +842,8 @@ class NeonPhysicsPainter extends CustomPainter {
     canvas.translate(-size.width / 2, -size.height / 2);
     canvas.drawPath(cyanPath, cyanPaint);
 
-    // ✅ FEATURE 2: Only draw bubbles if active
-    if (showBubbles) {
+    // ✅ FIX: Only draw bubbles if BOTH are active
+    if (hasBoth) {
       Paint dotPaint = Paint()..color = Colors.white.withOpacity(0.6);
       for (var d in dots) {
         canvas.drawCircle(Offset(size.width/2 + d.x, size.height/2 + d.y), d.size, dotPaint);

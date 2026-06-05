@@ -213,7 +213,7 @@ class Psu {
     required this.price,
     required this.wattage,
     required this.efficiency,
-    required this.isModular,
+    required this.isModular, 
   });
 }
 

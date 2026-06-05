@@ -31,6 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   audioplayers: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
 
 
   # The following adds the Cupertino Icons font to your application.
@@ -40,6 +41,9 @@ dependencies:
   google_fonts: ^6.3.3
   font_awesome_flutter: ^10.6.0
   sensors_plus: ^6.1.0
+  video_player: ^2.11.0
+
+  
   
 
 dev_dependencies:
@@ -115,5 +119,19 @@ flutter:
     - assets/fortnite.jpg
     - assets/spiderwebcorner.png
     - assets/thwip.wav
+    - assets/maps.jpg
+    - assets/docok.png
+    - assets/spider_convo.png
+    - assets/spidey_attack_doc.mp4 
+    - assets/doc_attack.mp4
+    - assets/doc_ock_bg.png
+    - assets/boot.mp4
+    - assets/build.png
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"  
+  adaptive_icon_background: "#121212" # This replaces the white background with dark grey
+  adaptive_icon_foreground: "assets/logo.png"
