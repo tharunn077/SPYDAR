@@ -9,13 +9,16 @@ SPYDAR is a high-fidelity, cross-platform mobile application that functions as a
 
 ---
 
+
 ## 📸 Screenshots
 
-*(Replace the placeholder links below with the actual paths to your images once you upload them to the repository)*
-
-| Assembly Dashboard | Bottleneck Diagnostics | SPYDAR OS | Campaign Mode |
+| Home Screen | Assembly Dashboard | Component Selection | Bottleneck Analysis |
 | :---: | :---: | :---: | :---: |
-| <img src="[simulator.png](https://github.com/tharunn077/SPYDAR/blob/main/android/Simulator.png)" width="200"/> | <img src="link_to_diagnostic_image.png" width="200"/> | <img src="https://github.com/tharunn077/SPYDAR/blob/main/android/os_screen.png" width="200"/> | <img src="link_to_campaign_image.png" width="200"/> |
+| <img src="android/home_screen.png" width="200"/> | <img src="android/Simulator.png" width="200"/> | <img src="android/component_selection.png" width="200"/> | <img src="android/bottleneck_analysis.png" width="200"/> |
+
+| OS Screen | SpydarMark | SPYDAR Labs | Campaign Mode |
+| :---: | :---: | :---: | :---: |
+| <img src="android/os_screen.png" width="200"/> | <img src="android/spydarmark.png" width="200"/> | <img src="android/labs.png" width="200"/> | <img src="android/campaign_mode.png" width="200"/> |
 
 ---
 
